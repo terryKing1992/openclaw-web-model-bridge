@@ -28,6 +28,7 @@ window.addEventListener('message', (event) => {
   
   if (msg.type === 'response') {
     const response = msg.data;
+    console.log('[OpenClaw] 收到inject响应:', response);
     
     if (response.conversation_id && response.conversation_id !== lastConversationId) {
       lastConversationId = response.conversation_id;
@@ -35,8 +36,10 @@ window.addEventListener('message', (event) => {
       sendStatus();
     }
     
-    if (response.chunks) {
+    if (response.chunks && response.chunks.length > 0) {
+      console.log('[OpenClaw] 转发chunks:', response.chunks.length, '个');
       for (const chunk of response.chunks) {
+        console.log('[OpenClaw] 转发chunk:', chunk);
         chrome.runtime.sendMessage({
           type: 'delta',
           request_id: response.request_id,
@@ -45,12 +48,14 @@ window.addEventListener('message', (event) => {
       }
     }
     if (response.done) {
+      console.log('[OpenClaw] 转发done');
       chrome.runtime.sendMessage({
         type: 'done',
         request_id: response.request_id,
       });
     }
     if (response.error) {
+      console.log('[OpenClaw] 转发error:', response.error);
       chrome.runtime.sendMessage({
         type: 'error',
         request_id: response.request_id,

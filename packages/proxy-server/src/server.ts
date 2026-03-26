@@ -36,7 +36,17 @@ wss.on('connection', (ws) => {
   
   ws.on('message', (data) => {
     try {
-      const msg: WSMessage = JSON.parse(data.toString());
+      const rawMsg = data.toString();
+      logger.info(`收到WebSocket消息: ${rawMsg}`);
+      const msg: WSMessage = JSON.parse(rawMsg);
+      
+      // 处理ping-pong
+      if (msg.type === 'ping') {
+        logger.info(`收到ping: timestamp=${msg.timestamp}`);
+        ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+        return;
+      }
+      
       handleMessage(msg);
     } catch (e) {
       logger.error('Failed to parse message: ' + e);
@@ -56,12 +66,15 @@ wss.on('connection', (ws) => {
 });
 
 function handleMessage(msg: WSMessage) {
+  logger.info(`处理消息类型: ${msg.type}, request_id: ${msg.request_id || 'N/A'}`);
+  
   if (msg.type === 'status') {
     pluginStatus.pageOpened = msg.pageOpened ?? true;
     pluginStatus.loggedIn = msg.loggedIn ?? msg.logged_in ?? false;
     pluginStatus.conversationId = msg.conversationId ?? msg.conversation_id ?? null;
     logger.info(`状态更新: pageOpened=${pluginStatus.pageOpened}, loggedIn=${pluginStatus.loggedIn}, conversationId=${pluginStatus.conversationId}`);
   } else if (msg.type === 'delta' && msg.request_id && msg.text) {
+    logger.info(`收到delta: request_id=${msg.request_id}, text长度=${msg.text.length}, text=${msg.text.substring(0, 50)}...`);
     const pending = pendingRequests.get(msg.request_id);
     if (pending) {
       pending.chunks.push(msg.text);
@@ -70,21 +83,26 @@ function handleMessage(msg: WSMessage) {
       }
     }
   } else if (msg.type === 'done' && msg.request_id) {
+    logger.info(`收到done: request_id=${msg.request_id}`);
     const pending = pendingRequests.get(msg.request_id);
     if (pending) {
       pending.resolve('');
       pendingRequests.delete(msg.request_id);
     }
   } else if (msg.type === 'error' && msg.request_id) {
+    logger.error(`收到error: request_id=${msg.request_id}, message=${msg.message}`);
     const pending = pendingRequests.get(msg.request_id);
     if (pending) {
       pending.reject(new Error(msg.message || 'Unknown error'));
       pendingRequests.delete(msg.request_id);
     }
   } else if (msg.type === 'page_closed') {
+    logger.info('收到page_closed');
     pluginStatus.pageOpened = false;
     pluginStatus.loggedIn = false;
     pluginStatus.conversationId = null;
+  } else {
+    logger.info(`收到未知类型消息: ${JSON.stringify(msg)}`);
   }
 }
 
@@ -107,17 +125,22 @@ app.get('/v1/status', (_req, res) => {
 });
 
 app.post('/v1/chat/completions', async (req, res) => {
+  logger.info(`收到OpenAI请求: ${JSON.stringify(req.body)}`);
+  
   if (!pluginStatus.connected) {
+    logger.error('插件未连接');
     const error: OpenAIError = formatOpenAIError('插件未连接，请确保已安装Chrome插件', 'plugin_disconnected', 503);
     return res.status(503).json(error);
   }
   
   if (!pluginStatus.pageOpened) {
+    logger.error('页面未打开');
     const error: OpenAIError = formatOpenAIError('请打开豆包页面后重试', 'page_closed', 503);
     return res.status(503).json(error);
   }
   
   if (!pluginStatus.loggedIn) {
+    logger.error('用户未登录');
     const error: OpenAIError = formatOpenAIError('请在豆包页面登录后重试', 'not_logged_in', 503);
     return res.status(503).json(error);
   }
@@ -129,6 +152,8 @@ app.post('/v1/chat/completions', async (req, res) => {
   
   const messages = truncateMessages(chatRequest.messages);
   const message = buildDoubaoMessage(messages);
+  
+  logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message=${message.substring(0, 100)}`);
   
   if (chatRequest.stream !== false) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -152,11 +177,13 @@ app.post('/v1/chat/completions', async (req, res) => {
       message,
     };
     
+    logger.info(`发送WebSocket消息: ${JSON.stringify(wsMessage)}`);
     wsClient?.send(JSON.stringify(wsMessage));
     
     const pending = {
       chunks: [] as string[],
       resolve: (text: string) => {
+        logger.info(`resolve called: text=${text.substring(0, 50)}`);
         if (text) {
           res.write(formatSSE({
             id: `chatcmpl-${requestId}`,
@@ -168,6 +195,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
       },
       reject: (error: Error) => {
+        logger.error(`reject called: ${error.message}`);
         res.write(formatSSE({
           id: `chatcmpl-${requestId}`,
           object: 'chat.completion.chunk',
@@ -185,12 +213,14 @@ app.post('/v1/chat/completions', async (req, res) => {
     pendingRequests.set(requestId, pending);
     
     req.on('close', () => {
+      logger.info(`请求关闭: requestId=${requestId}`);
       wsClient?.send(JSON.stringify({ type: 'cancel', request_id: requestId }));
       pendingRequests.delete(requestId);
     });
     
     const checkDone = setInterval(() => {
       if (!pendingRequests.has(requestId)) {
+        logger.info(`请求完成: requestId=${requestId}`);
         clearInterval(checkDone);
         res.write(formatSSE({
           id: `chatcmpl-${requestId}`,

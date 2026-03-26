@@ -4,8 +4,8 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
 let waitingForPong = false;
 const MAX_RECONNECT_DELAY = 30000;
-const HEARTBEAT_INTERVAL = 30000;
-const HEARTBEAT_TIMEOUT = 5000;
+const HEARTBEAT_INTERVAL = 5000; // 5秒心跳
+const HEARTBEAT_TIMEOUT = 3000;  // 3秒超时
 
 interface PluginStatus {
   pageOpened: boolean;
@@ -38,6 +38,7 @@ function connect() {
   ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data);
+      console.log('[OpenClaw Offscreen] Received from proxy:', msg.type, msg);
       handleMessage(msg);
     } catch (e) {
       console.error('[OpenClaw Offscreen] Failed to parse message:', e);
@@ -68,10 +69,9 @@ function startHeartbeat() {
       }
       
       waitingForPong = true;
-      ws.send(JSON.stringify({
-        type: 'ping',
-        timestamp: Date.now(),
-      }));
+      const pingMsg = { type: 'ping', timestamp: Date.now() };
+      console.log('[OpenClaw Offscreen] Sending ping:', pingMsg);
+      ws.send(JSON.stringify(pingMsg));
       
       heartbeatTimeout = setTimeout(() => {
         if (waitingForPong && ws) {
@@ -82,7 +82,7 @@ function startHeartbeat() {
     }
   }, HEARTBEAT_INTERVAL);
   
-  console.log('[OpenClaw Offscreen] Heartbeat started (interval: 30s)');
+  console.log('[OpenClaw Offscreen] Heartbeat started (interval: 5s)');
 }
 
 function stopHeartbeat() {
@@ -110,15 +110,15 @@ function scheduleReconnect() {
 
 function sendStatus() {
   if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({
-      type: 'status',
-      ...pluginStatus,
-    }));
+    const msg = { type: 'status', ...pluginStatus };
+    console.log('[OpenClaw Offscreen] Sending status to proxy:', msg);
+    ws.send(JSON.stringify(msg));
   }
 }
 
 function handleMessage(msg: any) {
   if (msg.type === 'pong') {
+    console.log('[OpenClaw Offscreen] Received pong from proxy:', msg);
     waitingForPong = false;
     if (heartbeatTimeout) {
       clearTimeout(heartbeatTimeout);
@@ -128,21 +128,26 @@ function handleMessage(msg: any) {
   }
   
   if (msg.type === 'chat') {
+    console.log('[OpenClaw Offscreen] Forwarding chat to content script:', msg);
     chrome.runtime.sendMessage(msg);
   }
   
   if (msg.type === 'cancel') {
+    console.log('[OpenClaw Offscreen] Forwarding cancel to content script:', msg);
     chrome.runtime.sendMessage(msg);
   }
 }
 
 chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+  console.log('[OpenClaw Offscreen] Received from content script:', message.type, message);
+  
   if (message.type === 'status') {
     Object.assign(pluginStatus, message);
     sendStatus();
     sendResponse({ received: true });
   } else if (message.type === 'delta' || message.type === 'done' || message.type === 'error') {
     if (ws?.readyState === WebSocket.OPEN) {
+      console.log('[OpenClaw Offscreen] Forwarding to proxy:', message.type, message);
       ws.send(JSON.stringify(message));
     }
     sendResponse({ received: true });
