@@ -73,6 +73,7 @@ async function sendDebugRequest() {
     }
     
     const tab = tabs[0];
+    const tabId = tab.id!;  // 我们知道这里一定有值
     
     // 检查是否是豆包页面
     if (!tab.url?.includes('doubao.com')) {
@@ -81,7 +82,7 @@ async function sendDebugRequest() {
     
     // 检查 content script 是否已注入
     try {
-      await chrome.tabs.sendMessage(tab.id, { type: 'ping' });
+      await chrome.tabs.sendMessage(tabId, { type: 'ping' });
     } catch (e: any) {
       if (e.message?.includes('Receiving end does not exist')) {
         throw new Error('Content Script 未加载，请刷新豆包页面');
@@ -93,7 +94,7 @@ async function sendDebugRequest() {
     
     const requestId = 'debug_' + Date.now();
     
-    await chrome.tabs.sendMessage(tab.id, {
+    await chrome.tabs.sendMessage(tabId, {
       type: 'chat',
       request_id: requestId,
       conversation_id: '',
