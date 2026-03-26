@@ -106,7 +106,16 @@ function handleMessage(msg: WSMessage) {
   }
 }
 
-app.use(express.json());
+app.use(express.json({ 
+  limit: '10mb',
+  type: 'application/json'
+}));
+
+// 确保响应使用 UTF-8 编码
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
 
 app.get('/v1/models', (_req, res) => {
   const response: OpenAIModelsResponse = {
@@ -125,7 +134,9 @@ app.get('/v1/status', (_req, res) => {
 });
 
 app.post('/v1/chat/completions', async (req, res) => {
-  logger.info(`收到OpenAI请求: ${JSON.stringify(req.body)}`);
+  // 使用 Buffer 正确解码中文
+  const rawBody = JSON.stringify(req.body);
+  logger.info(`收到OpenAI请求: ${rawBody}`);
   
   if (!pluginStatus.connected) {
     logger.error('插件未连接');
@@ -142,6 +153,13 @@ app.post('/v1/chat/completions', async (req, res) => {
   if (!pluginStatus.loggedIn) {
     logger.error('用户未登录');
     const error: OpenAIError = formatOpenAIError('请在豆包页面登录后重试', 'not_logged_in', 503);
+    return res.status(503).json(error);
+  }
+  
+  // 检查会话ID
+  if (!pluginStatus.conversationId) {
+    logger.error('未获取到会话ID');
+    const error: OpenAIError = formatOpenAIError('未获取到豆包会话ID，请刷新豆包页面', 'no_conversation_id', 503);
     return res.status(503).json(error);
   }
   
