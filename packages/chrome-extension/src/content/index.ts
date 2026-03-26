@@ -32,6 +32,7 @@ window.addEventListener('message', (event) => {
     if (response.conversation_id && response.conversation_id !== lastConversationId) {
       lastConversationId = response.conversation_id;
       console.log('[OpenClaw] 检测到新会话ID:', response.conversation_id);
+      sendStatus();
     }
     
     if (response.chunks) {
@@ -61,48 +62,12 @@ window.addEventListener('message', (event) => {
 
 function getConversationId(): string | null {
   const pathname = window.location.pathname;
+  console.log('[OpenClaw] 当前路径:', pathname);
   
-  const patterns = [
-    /\/chat\/(\d+)/,
-    /\/chat\/(local_[a-zA-Z0-9_]+)/,
-    /\/chat\/([a-zA-Z0-9_-]+)/,
-  ];
-  
-  for (const pattern of patterns) {
-    const match = pathname.match(pattern);
-    if (match && match[1]) {
-      console.log('[OpenClaw] 从URL获取会话ID:', match[1]);
-      return match[1];
-    }
-  }
-  
-  return null;
-}
-
-function getConversationIdFromPage(): string | null {
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const convId = urlParams.get('conversation_id') || urlParams.get('conv_id');
-    if (convId) {
-      console.log('[OpenClaw] 从URL参数获取会话ID:', convId);
-      return convId;
-    }
-    
-    const storedConvId = localStorage.getItem('doubao_conversation_id') ||
-                          localStorage.getItem('current_conversation_id');
-    if (storedConvId) {
-      console.log('[OpenClaw] 从localStorage获取会话ID:', storedConvId);
-      return storedConvId;
-    }
-    
-    const state = (window as any).__DOUBAO_STATE__ || (window as any).__INITIAL_STATE__;
-    if (state?.conversationId || state?.conversation_id) {
-      const id = state.conversationId || state.conversation_id;
-      console.log('[OpenClaw] 从页面状态获取会话ID:', id);
-      return id;
-    }
-  } catch (e) {
-    console.error('[OpenClaw] 获取会话ID失败:', e);
+  const match = pathname.match(/\/chat\/(\d+)/);
+  if (match && match[1]) {
+    console.log('[OpenClaw] 从URL获取会话ID:', match[1]);
+    return match[1];
   }
   
   return null;
@@ -110,44 +75,28 @@ function getConversationIdFromPage(): string | null {
 
 function checkLoginStatus(): boolean {
   try {
-    const token = localStorage.getItem('token') || 
-                  localStorage.getItem('auth_token') ||
-                  getCookie('token') ||
-                  getCookie('sessionid');
-    
-    if (token) {
-      return true;
-    }
-    
     const userAvatar = document.querySelector('[class*="avatar"]') || 
-                       document.querySelector('[class*="user-info"]') ||
-                       document.querySelector('[class*="profile"]') ||
-                       document.querySelector('[data-user-id]');
-    
-    if (userAvatar) {
-      return true;
-    }
-    
-    const loginButton = document.querySelector('[class*="login"]');
-    return !loginButton;
+                       document.querySelector('[class*="user"]') ||
+                       document.querySelector('[data-testid="user-menu"]');
+    const loggedIn = !!userAvatar;
+    console.log('[OpenClaw] 登录状态:', loggedIn);
+    return loggedIn;
   } catch (e) {
     console.error('[OpenClaw] 检测登录状态失败:', e);
     return false;
   }
 }
 
-function getCookie(name: string): string | null {
-  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-  return match ? match[2] : null;
-}
-
 function sendStatus() {
-  let conversationId = getConversationId() || getConversationIdFromPage() || lastConversationId;
+  const conversationId = getConversationId() || lastConversationId;
   const loggedIn = checkLoginStatus();
   
-  if (!conversationId && loggedIn) {
-    conversationId = 'new';
-  }
+  console.log('[OpenClaw] 发送状态:', {
+    pageOpened: true,
+    loggedIn,
+    conversationId,
+    url: window.location.href,
+  });
   
   chrome.runtime.sendMessage({
     type: 'status',
@@ -200,31 +149,30 @@ window.addEventListener('beforeunload', () => {
 
 let lastUrl = window.location.href;
 
-function setupUrlObserver() {
-  const observer = new MutationObserver(() => {
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      console.log('[OpenClaw] URL changed:', window.location.href);
-      sendStatus();
-    }
-  });
-  
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  } else {
-    document.addEventListener('DOMContentLoaded', () => {
-      observer.observe(document.body, { childList: true, subtree: true });
-    });
+function checkUrlChange() {
+  if (window.location.href !== lastUrl) {
+    lastUrl = window.location.href;
+    console.log('[OpenClaw] URL changed:', window.location.href);
+    sendStatus();
   }
 }
 
-setupUrlObserver();
+setInterval(checkUrlChange, 1000);
 
-setInterval(() => {
-  sendStatus();
-}, 30000);
+window.addEventListener('popstate', () => {
+  console.log('[OpenClaw] popstate event');
+  checkUrlChange();
+});
+
+window.addEventListener('hashchange', () => {
+  console.log('[OpenClaw] hashchange event');
+  checkUrlChange();
+});
+
+setInterval(sendStatus, 30000);
 
 setTimeout(sendStatus, 1000);
 setTimeout(sendStatus, 3000);
+setTimeout(sendStatus, 5000);
 
-console.log('[OpenClaw] Content script loaded');
+console.log('[OpenClaw] Content script loaded, URL:', window.location.href);

@@ -4,13 +4,16 @@ export interface WSMessage {
   client?: string;
   timestamp?: number;
   logged_in?: boolean;
+  loggedIn?: boolean;
   conversation_id?: string | null;
+  conversationId?: string | null;
   url?: string;
   text?: string;
   message?: string;
   model?: string;
   need_deep_think?: number;
   bot_id?: string;
+  pageOpened?: boolean;
 }
 
 export interface PluginStatus {

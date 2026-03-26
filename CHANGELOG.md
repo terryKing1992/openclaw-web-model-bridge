@@ -55,14 +55,14 @@ All notable changes to this project will be documented in this file.
 
 **问题**: 无法自动获取豆包的会话 ID
 
-**原因**: 
-1. URL 匹配正则只支持纯数字格式，不支持 `local_xxx` 格式
-2. 没有从 SSE_ACK 响应中提取 conversation_id
+**原因**: 消息字段名不匹配
+- Chrome 扩展发送驼峰命名: `loggedIn`, `conversationId`
+- 代理服务器期望蛇形命名: `logged_in`, `conversation_id`
 
 **解决方案**:
-1. 扩展 URL 匹配正则，支持多种会话 ID 格式
-2. 在 inject.ts 中解析 SSE_ACK 事件，提取 conversation_id
-3. 从 URL 参数、localStorage、页面状态等多个来源获取会话 ID
+1. 修改代理服务器支持两种命名格式
+2. 添加详细的日志输出便于调试
+3. 改进 URL 变化检测，使用定时器轮询
 
 #### Chrome 扩展图标文件缺失
 

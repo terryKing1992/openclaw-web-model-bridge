@@ -57,9 +57,10 @@ wss.on('connection', (ws) => {
 
 function handleMessage(msg: WSMessage) {
   if (msg.type === 'status') {
-    pluginStatus.pageOpened = true;
-    pluginStatus.loggedIn = msg.logged_in ?? false;
-    pluginStatus.conversationId = msg.conversation_id ?? null;
+    pluginStatus.pageOpened = msg.pageOpened ?? true;
+    pluginStatus.loggedIn = msg.loggedIn ?? msg.logged_in ?? false;
+    pluginStatus.conversationId = msg.conversationId ?? msg.conversation_id ?? null;
+    logger.info(`状态更新: pageOpened=${pluginStatus.pageOpened}, loggedIn=${pluginStatus.loggedIn}, conversationId=${pluginStatus.conversationId}`);
   } else if (msg.type === 'delta' && msg.request_id && msg.text) {
     const pending = pendingRequests.get(msg.request_id);
     if (pending) {
