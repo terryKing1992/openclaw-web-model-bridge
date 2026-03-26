@@ -75,9 +75,7 @@ function getConversationId(): string | null {
 
 function checkLoginStatus(): boolean {
   try {
-    const loginButton = document.querySelector('[class*="login"]') || 
-                        document.querySelector('[class*="Login"]') ||
-                        document.querySelector('button[class*="login"]');
+    const loginButton = document.querySelector('[data-testid="toLogin"]');
     
     if (loginButton) {
       console.log('[OpenClaw] 登录状态: false (找到登录按钮)');
