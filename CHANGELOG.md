@@ -141,6 +141,21 @@ All notable changes to this project will be documented in this file.
 npm config set registry https://registry.npMMirror.com
 ```
 
-### 优化
+#### Popup 调试功能添加
 
-- 豆包 API 参数动态获取：aid、device_id、web_id、tea_uuid、fp、pc_version 等参数从页面 Cookie/localStorage 动态读取，不再硬编码
+**新增功能**: 在插件 Popup 中添加直接调试豆包 API 的界面
+
+**功能详情**:
+1. 添加文本输入框用于输入测试消息
+2. 添加发送按钮触发直接 API 调用
+3. 添加响应数据显示区域，显示原始响应数据
+4. 添加状态提示（加载中/成功/失败）
+5. 支持 Enter 键快捷发送
+
+#### Popup 崩溃检测修复
+
+**问题**: Popup 显示"插件已崩溃"
+
+**原因**: 使用了 Manifest V3 不兼容的 API `chrome.runtime.getBackgroundPage()`
+
+**解决方案**: 移除 `getBackgroundPage` 调用，改为通过发送消息检测 Service Worker 是否正常工作
