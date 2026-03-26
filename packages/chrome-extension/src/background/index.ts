@@ -62,11 +62,12 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-  console.log('[OpenClaw Background] Received message:', message.type, 'from:', sender.id ? 'extension' : ('tab' in sender ? 'content' : 'popup'));
+  const senderType = sender.id ? (sender.tab ? 'content' : 'offscreen') : 'popup';
+  console.log('[OpenClaw Background] Received message:', message.type, 'from:', senderType, 'tab:', sender.tab?.id);
   
   // 来自 Popup 的 get_status 请求，转发到 Offscreen
   if (message.type === 'get_status') {
-    if (sender.id) {
+    if (sender.id && !sender.tab) {
       // 来自 popup，转发到 offscreen
       chrome.runtime.sendMessage(message).then((response: any) => {
         sendResponse(response);
@@ -78,16 +79,17 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
     return true;
   }
   
-  // 来自 Content Script 的状态更新，转发到 Offscreen
+  // 来自 Content Script 的响应消息（delta/done/error/status），转发到 Offscreen
   if (message.type === 'status' || 
       message.type === 'delta' || 
       message.type === 'done' || 
       message.type === 'error' ||
       message.type === 'page_closed') {
-    if (!sender.id) {
+    if (sender.tab) {
       // 来自 content script，转发到 offscreen
+      console.log('[OpenClaw Background] 转发消息到offscreen:', message.type);
       chrome.runtime.sendMessage(message).catch((e) => {
-        console.error('[OpenClaw Background] Failed to forward message:', e);
+        console.error('[OpenClaw Background] Failed to forward to offscreen:', e);
       });
     }
     sendResponse({ received: true });
@@ -96,21 +98,24 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
   
   // 来自 Popup 的 chat 请求，转发到 Content Script
   if (message.type === 'chat' || message.type === 'cancel' || message.type === 'ping') {
-    if (sender.id) {
+    if (sender.id && !sender.tab) {
       // 来自 popup，需要转发到 content script
       if (activeDoubaoTabId) {
+        console.log('[OpenClaw Background] 转发chat到content script, tabId:', activeDoubaoTabId);
         chrome.tabs.sendMessage(activeDoubaoTabId, message).then((response) => {
+          console.log('[OpenClaw Background] content script响应:', response);
           sendResponse(response);
         }).catch((e) => {
           console.error('[OpenClaw Background] Failed to send to content script:', e);
           sendResponse({ error: e.message });
         });
       } else {
+        console.error('[OpenClaw Background] 没有活动的豆包标签页');
         sendResponse({ error: '请先打开豆包页面' });
       }
       return true;
-    } else {
-      // 来自 content script 的响应，不需要转发
+    } else if (sender.tab) {
+      // 来自 content script，不需要转发
       sendResponse({ received: true });
       return true;
     }

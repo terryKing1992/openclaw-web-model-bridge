@@ -127,28 +127,37 @@ function handleMessage(msg: any) {
     return;
   }
   
+  // 来自代理服务器的chat/cancel消息，转发到background，再转发到content script
   if (msg.type === 'chat') {
-    console.log('[OpenClaw Offscreen] Forwarding chat to content script:', msg);
-    chrome.runtime.sendMessage(msg);
+    console.log('[OpenClaw Offscreen] Forwarding chat to content script via background:', msg);
+    chrome.runtime.sendMessage(msg).catch((e) => {
+      console.error('[OpenClaw Offscreen] Failed to forward chat:', e);
+    });
   }
   
   if (msg.type === 'cancel') {
-    console.log('[OpenClaw Offscreen] Forwarding cancel to content script:', msg);
-    chrome.runtime.sendMessage(msg);
+    console.log('[OpenClaw Offscreen] Forwarding cancel to content script via background:', msg);
+    chrome.runtime.sendMessage(msg).catch((e) => {
+      console.error('[OpenClaw Offscreen] Failed to forward cancel:', e);
+    });
   }
 }
 
-chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
-  console.log('[OpenClaw Offscreen] Received from content script:', message.type, message);
+// 从content script接收响应消息，转发到proxy
+chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
+  console.log('[OpenClaw Offscreen] Received:', message.type, 'from:', sender.tab ? 'content' : 'extension');
   
   if (message.type === 'status') {
     Object.assign(pluginStatus, message);
     sendStatus();
     sendResponse({ received: true });
   } else if (message.type === 'delta' || message.type === 'done' || message.type === 'error') {
+    // 来自content script的响应，转发到proxy
     if (ws?.readyState === WebSocket.OPEN) {
       console.log('[OpenClaw Offscreen] Forwarding to proxy:', message.type, message);
       ws.send(JSON.stringify(message));
+    } else {
+      console.error('[OpenClaw Offscreen] WebSocket not open, cannot forward');
     }
     sendResponse({ received: true });
   } else if (message.type === 'page_closed') {
@@ -164,6 +173,9 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
       connected: ws?.readyState === WebSocket.OPEN,
       ...pluginStatus,
     });
+  } else {
+    // 其他消息（如chat的响应），也需要响应
+    sendResponse({ received: true });
   }
   return true;
 });
