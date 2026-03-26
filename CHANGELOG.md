@@ -38,6 +38,17 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+#### Content Script ES Module 问题
+
+**问题**: Content Script 报错 `Cannot use import statement outside a module`
+
+**原因**: TypeScript 编译输出为 ES Module 格式，但 Chrome 扩展的 Content Script 不支持 ES Module
+
+**解决方案**: 
+1. 使用 esbuild 打包，输出 IIFE (立即执行函数) 格式
+2. 添加 `build.js` 构建脚本
+3. 更新 package.json 构建命令
+
 #### WebSocket 心跳机制问题
 
 **问题**: WebSocket 连接没有正确的心跳检测，可能导致连接断开后无法检测
