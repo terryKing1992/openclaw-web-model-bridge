@@ -38,6 +38,32 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+#### WebSocket 心跳机制问题
+
+**问题**: WebSocket 连接没有正确的心跳检测，可能导致连接断开后无法检测
+
+**原因**: 
+1. 心跳超时定时器被覆盖，没有正确等待 pong 响应
+2. 缺少 `waitingForPong` 状态标志
+
+**解决方案**:
+1. 添加 `waitingForPong` 状态标志
+2. 发送 ping 前检查是否在等待 pong，如果是则关闭连接
+3. 收到 pong 后正确重置状态
+
+#### 豆包会话 ID 获取问题
+
+**问题**: 无法自动获取豆包的会话 ID
+
+**原因**: 
+1. URL 匹配正则只支持纯数字格式，不支持 `local_xxx` 格式
+2. 没有从 SSE_ACK 响应中提取 conversation_id
+
+**解决方案**:
+1. 扩展 URL 匹配正则，支持多种会话 ID 格式
+2. 在 inject.ts 中解析 SSE_ACK 事件，提取 conversation_id
+3. 从 URL 参数、localStorage、页面状态等多个来源获取会话 ID
+
 #### Chrome 扩展图标文件缺失
 
 **问题**: 安装 Chrome 扩展时报错 `Could not load icon 'icons/icon16.png' specified in 'icons'`

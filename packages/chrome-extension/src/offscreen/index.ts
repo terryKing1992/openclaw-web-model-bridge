@@ -2,6 +2,7 @@ let ws: WebSocket | null = null;
 let reconnectAttempts = 0;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimeout: ReturnType<typeof setTimeout> | null = null;
+let waitingForPong = false;
 const MAX_RECONNECT_DELAY = 30000;
 const HEARTBEAT_INTERVAL = 30000;
 const HEARTBEAT_TIMEOUT = 5000;
@@ -23,10 +24,13 @@ const pluginStatus: PluginStatus = {
 function connect() {
   if (ws) return;
   
+  console.log('[OpenClaw Offscreen] Connecting to WebSocket...');
   ws = new WebSocket('ws://localhost:8765');
   
   ws.onopen = () => {
+    console.log('[OpenClaw Offscreen] WebSocket connected');
     reconnectAttempts = 0;
+    waitingForPong = false;
     startHeartbeat();
     sendStatus();
   };
@@ -41,6 +45,7 @@ function connect() {
   };
   
   ws.onclose = () => {
+    console.log('[OpenClaw Offscreen] WebSocket closed');
     ws = null;
     stopHeartbeat();
     scheduleReconnect();
@@ -52,18 +57,32 @@ function connect() {
 }
 
 function startHeartbeat() {
+  stopHeartbeat();
+  
   heartbeatTimer = setInterval(() => {
     if (ws?.readyState === WebSocket.OPEN) {
+      if (waitingForPong) {
+        console.log('[OpenClaw Offscreen] Heartbeat timeout, closing connection');
+        ws.close();
+        return;
+      }
+      
+      waitingForPong = true;
       ws.send(JSON.stringify({
         type: 'ping',
         timestamp: Date.now(),
       }));
       
       heartbeatTimeout = setTimeout(() => {
-        ws?.close();
+        if (waitingForPong && ws) {
+          console.log('[OpenClaw Offscreen] No pong received, closing connection');
+          ws.close();
+        }
       }, HEARTBEAT_TIMEOUT);
     }
   }, HEARTBEAT_INTERVAL);
+  
+  console.log('[OpenClaw Offscreen] Heartbeat started (interval: 30s)');
 }
 
 function stopHeartbeat() {
@@ -75,11 +94,14 @@ function stopHeartbeat() {
     clearTimeout(heartbeatTimeout);
     heartbeatTimeout = null;
   }
+  waitingForPong = false;
 }
 
 function scheduleReconnect() {
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
   reconnectAttempts++;
+  
+  console.log(`[OpenClaw Offscreen] Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
   
   setTimeout(() => {
     connect();
@@ -97,6 +119,7 @@ function sendStatus() {
 
 function handleMessage(msg: any) {
   if (msg.type === 'pong') {
+    waitingForPong = false;
     if (heartbeatTimeout) {
       clearTimeout(heartbeatTimeout);
       heartbeatTimeout = null;

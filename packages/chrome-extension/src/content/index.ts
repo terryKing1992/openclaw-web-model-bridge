@@ -2,6 +2,7 @@ import { DoubaoClient } from './doubao.js';
 
 let doubaoClient: DoubaoClient | null = null;
 let currentRequestId: string | null = null;
+let lastConversationId: string | null = null;
 
 function injectScript() {
   const script = document.createElement('script');
@@ -27,6 +28,12 @@ window.addEventListener('message', (event) => {
   
   if (msg.type === 'response') {
     const response = msg.data;
+    
+    if (response.conversation_id && response.conversation_id !== lastConversationId) {
+      lastConversationId = response.conversation_id;
+      console.log('[OpenClaw] 检测到新会话ID:', response.conversation_id);
+    }
+    
     if (response.chunks) {
       for (const chunk of response.chunks) {
         chrome.runtime.sendMessage({
@@ -53,20 +60,94 @@ window.addEventListener('message', (event) => {
 });
 
 function getConversationId(): string | null {
-  const match = window.location.pathname.match(/\/chat\/(\d+)/);
-  return match ? match[1] : null;
+  const pathname = window.location.pathname;
+  
+  const patterns = [
+    /\/chat\/(\d+)/,
+    /\/chat\/(local_[a-zA-Z0-9_]+)/,
+    /\/chat\/([a-zA-Z0-9_-]+)/,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = pathname.match(pattern);
+    if (match && match[1]) {
+      console.log('[OpenClaw] 从URL获取会话ID:', match[1]);
+      return match[1];
+    }
+  }
+  
+  return null;
+}
+
+function getConversationIdFromPage(): string | null {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const convId = urlParams.get('conversation_id') || urlParams.get('conv_id');
+    if (convId) {
+      console.log('[OpenClaw] 从URL参数获取会话ID:', convId);
+      return convId;
+    }
+    
+    const storedConvId = localStorage.getItem('doubao_conversation_id') ||
+                          localStorage.getItem('current_conversation_id');
+    if (storedConvId) {
+      console.log('[OpenClaw] 从localStorage获取会话ID:', storedConvId);
+      return storedConvId;
+    }
+    
+    const state = (window as any).__DOUBAO_STATE__ || (window as any).__INITIAL_STATE__;
+    if (state?.conversationId || state?.conversation_id) {
+      const id = state.conversationId || state.conversation_id;
+      console.log('[OpenClaw] 从页面状态获取会话ID:', id);
+      return id;
+    }
+  } catch (e) {
+    console.error('[OpenClaw] 获取会话ID失败:', e);
+  }
+  
+  return null;
 }
 
 function checkLoginStatus(): boolean {
-  const userAvatar = document.querySelector('[class*="avatar"]') || 
-                     document.querySelector('[class*="user"]') ||
-                     document.querySelector('[data-testid="user-menu"]');
-  return !!userAvatar;
+  try {
+    const token = localStorage.getItem('token') || 
+                  localStorage.getItem('auth_token') ||
+                  getCookie('token') ||
+                  getCookie('sessionid');
+    
+    if (token) {
+      return true;
+    }
+    
+    const userAvatar = document.querySelector('[class*="avatar"]') || 
+                       document.querySelector('[class*="user-info"]') ||
+                       document.querySelector('[class*="profile"]') ||
+                       document.querySelector('[data-user-id]');
+    
+    if (userAvatar) {
+      return true;
+    }
+    
+    const loginButton = document.querySelector('[class*="login"]');
+    return !loginButton;
+  } catch (e) {
+    console.error('[OpenClaw] 检测登录状态失败:', e);
+    return false;
+  }
+}
+
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? match[2] : null;
 }
 
 function sendStatus() {
-  const conversationId = getConversationId();
+  let conversationId = getConversationId() || getConversationIdFromPage() || lastConversationId;
   const loggedIn = checkLoginStatus();
+  
+  if (!conversationId && loggedIn) {
+    conversationId = 'new';
+  }
   
   chrome.runtime.sendMessage({
     type: 'status',
@@ -118,11 +199,32 @@ window.addEventListener('beforeunload', () => {
 });
 
 let lastUrl = window.location.href;
-new MutationObserver(() => {
-  if (window.location.href !== lastUrl) {
-    lastUrl = window.location.href;
-    sendStatus();
-  }
-}).observe(document.body, { childList: true, subtree: true });
 
-setInterval(sendStatus, 30000);
+function setupUrlObserver() {
+  const observer = new MutationObserver(() => {
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      console.log('[OpenClaw] URL changed:', window.location.href);
+      sendStatus();
+    }
+  });
+  
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+}
+
+setupUrlObserver();
+
+setInterval(() => {
+  sendStatus();
+}, 30000);
+
+setTimeout(sendStatus, 1000);
+setTimeout(sendStatus, 3000);
+
+console.log('[OpenClaw] Content script loaded');

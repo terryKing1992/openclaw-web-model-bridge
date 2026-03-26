@@ -168,6 +168,8 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
   const url = buildUrl(params);
   const body = buildRequestBody(request);
   
+  console.log('[OpenClaw Inject] Sending request:', request.request_id);
+  
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -195,6 +197,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       
       if ((response.status >= 500 || response.status === 429) && retryCount < MAX_RETRIES) {
         const delay = 1000 * Math.pow(2, retryCount);
+        console.log(`[OpenClaw Inject] Retrying in ${delay}ms...`);
         await sleep(delay);
         return sendDoubaoChatWithRetry(request, retryCount + 1);
       }
@@ -225,6 +228,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     
     const decoder = new TextDecoder();
     let buffer = '';
+    let conversationId: string | null = null;
     
     while (true) {
       const { done, value } = await reader.read();
@@ -240,7 +244,18 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         
-        if (line.startsWith('event: CHUNK_DELTA')) {
+        if (line.startsWith('event: SSE_ACK')) {
+          const dataLine = lines[i + 1];
+          if (dataLine?.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(dataLine.slice(6));
+              if (data.ack_client_meta?.conversation_id) {
+                conversationId = data.ack_client_meta.conversation_id;
+                console.log('[OpenClaw Inject] Got conversation_id:', conversationId);
+              }
+            } catch (e) {}
+          }
+        } else if (line.startsWith('event: CHUNK_DELTA')) {
           const dataLine = lines[i + 1];
           if (dataLine?.startsWith('data: ')) {
             try {
@@ -253,6 +268,18 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         } else if (line.startsWith('event: SSE_REPLY_END')) {
           isDone = true;
         }
+      }
+      
+      if (conversationId) {
+        window.postMessage({
+          __openclaw: true,
+          type: 'response',
+          data: {
+            request_id: request.request_id,
+            conversation_id: conversationId,
+          },
+        }, '*');
+        conversationId = null;
       }
       
       if (chunks.length > 0) {
@@ -279,15 +306,18 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     }
   } catch (error: any) {
     if (error.name === 'AbortError') {
+      console.log('[OpenClaw Inject] Request aborted');
       return;
     }
     
     if (retryCount < MAX_RETRIES) {
       const delay = 1000 * Math.pow(2, retryCount);
+      console.log(`[OpenClaw Inject] Error, retrying in ${delay}ms...`, error.message);
       await sleep(delay);
       return sendDoubaoChatWithRetry(request, retryCount + 1);
     }
     
+    console.error('[OpenClaw Inject] Request failed:', error);
     window.postMessage({
       __openclaw: true,
       type: 'response',
@@ -321,6 +351,8 @@ window.addEventListener('message', (event) => {
     }
   }
 });
+
+console.log('[OpenClaw Inject] Script loaded');
 
 window.postMessage({
   __openclaw: true,
