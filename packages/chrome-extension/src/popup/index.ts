@@ -55,9 +55,98 @@ async function updateStatus() {
   }
 }
 
-document.getElementById('refreshBtn')?.addEventListener('click', () => {
-  updateStatus();
-});
+async function sendDebugRequest() {
+  const input = document.getElementById('debugInput') as HTMLTextAreaElement;
+  const output = document.getElementById('debugOutput')!;
+  const status = document.getElementById('debugStatus')!;
+  const sendBtn = document.getElementById('debugSendBtn') as HTMLButtonElement;
+  
+  const message = input.value.trim();
+  if (!message) {
+    status.textContent = '请输入消息内容';
+    status.className = 'debug-status error show';
+    return;
+  }
+  
+  sendBtn.disabled = true;
+  status.textContent = '发送中...';
+  status.className = 'debug-status loading show';
+  output.className = 'debug-output';
+  output.textContent = '等待响应...\n';
+  
+  try {
+    const requestId = 'debug_' + Date.now();
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tabs[0]?.id) {
+      throw new Error('无法获取当前标签页');
+    }
+    
+    await chrome.tabs.sendMessage(tabs[0].id, {
+      type: 'chat',
+      request_id: requestId,
+      conversation_id: '',
+      bot_id: '7338286299411103781',
+      need_deep_think: 1,
+      message: message,
+    });
+    
+    let fullText = '';
+    let isComplete = false;
+    
+    const listener = (msg: any) => {
+      if (msg.request_id !== requestId) return;
+      
+      if (msg.type === 'delta') {
+        fullText += msg.text;
+        output.textContent = `Request ID: ${requestId}\n\n响应内容:\n${fullText}\n\n原始数据:\n${JSON.stringify(msg, null, 2)}\n\n--- 持续接收中 ---`;
+      } else if (msg.type === 'done') {
+        isComplete = true;
+        status.textContent = '请求完成';
+        status.className = 'debug-status success show';
+        output.textContent = `Request ID: ${requestId}\n\n完整响应:\n${fullText}\n\n--- 完成 ---`;
+        chrome.runtime.onMessage.removeListener(listener);
+        sendBtn.disabled = false;
+      } else if (msg.type === 'error') {
+        isComplete = true;
+        status.textContent = '请求失败: ' + msg.message;
+        status.className = 'debug-status error show';
+        output.textContent = `错误: ${msg.message}\n\n原始数据:\n${JSON.stringify(msg, null, 2)}`;
+        chrome.runtime.onMessage.removeListener(listener);
+        sendBtn.disabled = false;
+      }
+    };
+    
+    chrome.runtime.onMessage.addListener(listener);
+    
+    setTimeout(() => {
+      if (!isComplete) {
+        chrome.runtime.onMessage.removeListener(listener);
+        status.textContent = '请求超时';
+        status.className = 'debug-status error show';
+        output.textContent = `Request ID: ${requestId}\n\n已接收内容:\n${fullText}\n\n--- 超时 ---`;
+        sendBtn.disabled = false;
+      }
+    }, 30000);
+    
+  } catch (error: any) {
+    status.textContent = '发送失败: ' + error.message;
+    status.className = 'debug-status error show';
+    output.textContent = `错误详情:\n${error.stack || error.message}`;
+    sendBtn.disabled = false;
+  }
+}
+
+function clearDebugOutput() {
+  const output = document.getElementById('debugOutput')!;
+  const status = document.getElementById('debugStatus')!;
+  output.className = 'debug-output empty';
+  output.textContent = '等待发送请求...';
+  status.className = 'debug-status';
+  status.textContent = '';
+}
+
+document.getElementById('refreshBtn')?.addEventListener('click', updateStatus);
 
 document.getElementById('modelSelect')?.addEventListener('change', (e) => {
   const model = (e.target as HTMLSelectElement).value;
@@ -70,6 +159,16 @@ document.getElementById('conversationId')?.addEventListener('change', (e) => {
     type: 'status',
     conversationId,
   });
+});
+
+document.getElementById('debugSendBtn')?.addEventListener('click', sendDebugRequest);
+document.getElementById('debugClearBtn')?.addEventListener('click', clearDebugOutput);
+
+document.getElementById('debugInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendDebugRequest();
+  }
 });
 
 chrome.storage.local.get(['model'], (result: { [key: string]: any }) => {
