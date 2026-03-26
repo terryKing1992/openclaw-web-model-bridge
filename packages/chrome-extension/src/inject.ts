@@ -1,5 +1,12 @@
 const DOUBAO_BOT_ID = '7338286299411103781';
 const MAX_RETRIES = 2;
+const DEBUG = true; // 调试模式
+
+function debugLog(...args: any[]) {
+  if (DEBUG) {
+    console.log('[OpenClaw Debug]', ...args);
+  }
+}
 
 interface ChatRequest {
   request_id: string;
@@ -41,6 +48,8 @@ function getDoubaoParams(): DoubaoParams {
   const fp = getCookie('fp') || getLocalStorage('fp') || '';
   const pc_version = getCookie('pc_version') || getLocalStorage('pc_version') || '3.11.3';
   
+  debugLog('Doubao params:', { aid, device_id, web_id, tea_uuid, fp: fp ? '[set]' : '[empty]', pc_version });
+  
   return { aid, device_id, web_id, tea_uuid, fp, pc_version };
 }
 
@@ -61,7 +70,7 @@ function buildRequestBody(request: ChatRequest): any {
   const localMessageId = generateMessageId();
   const localConversationId = generateLocalId();
   
-  return {
+  const body = {
     client_meta: {
       local_conversation_id: localConversationId,
       conversation_id: request.conversation_id || '',
@@ -129,6 +138,10 @@ function buildRequestBody(request: ChatRequest): any {
       sub_conv_firstmet_type: '1',
     },
   };
+  
+  debugLog('Request body:', JSON.stringify(body, null, 2));
+  
+  return body;
 }
 
 function buildUrl(params: DoubaoParams): string {
@@ -157,10 +170,15 @@ function buildUrl(params: DoubaoParams): string {
   url.searchParams.set('region', '');
   url.searchParams.set('sys_region', '');
   
-  return url.toString();
+  const urlString = url.toString();
+  debugLog('Request URL:', urlString);
+  
+  return urlString;
 }
 
 async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number = 0): Promise<void> {
+  debugLog('sendDoubaoChat called:', request, 'retry:', retryCount);
+  
   const controller = new AbortController();
   abortControllers.set(request.request_id, controller);
   
@@ -168,7 +186,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
   const url = buildUrl(params);
   const body = buildRequestBody(request);
   
-  console.log('[OpenClaw Inject] Sending request:', request.request_id);
+  debugLog('Starting fetch...');
   
   try {
     const response = await fetch(url, {
@@ -181,7 +199,10 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       signal: controller.signal,
     });
     
+    debugLog('Response received:', response.status, response.statusText);
+    
     if (!response.ok) {
+      debugLog('Response not OK:', response.status);
       if (response.status === 403) {
         window.postMessage({
           __openclaw: true,
@@ -197,17 +218,20 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       
       if ((response.status >= 500 || response.status === 429) && retryCount < MAX_RETRIES) {
         const delay = 1000 * Math.pow(2, retryCount);
-        console.log(`[OpenClaw Inject] Retrying in ${delay}ms...`);
+        debugLog(`Retrying in ${delay}ms...`);
         await sleep(delay);
         return sendDoubaoChatWithRetry(request, retryCount + 1);
       }
+      
+      const errorText = await response.text();
+      debugLog('Error response body:', errorText);
       
       window.postMessage({
         __openclaw: true,
         type: 'response',
         data: {
           request_id: request.request_id,
-          error: `HTTP ${response.status}`,
+          error: `HTTP ${response.status}: ${errorText}`,
         },
       }, '*');
       return;
@@ -215,6 +239,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     
     const reader = response.body?.getReader();
     if (!reader) {
+      debugLog('No reader available');
       window.postMessage({
         __openclaw: true,
         type: 'response',
@@ -226,63 +251,75 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       return;
     }
     
+    debugLog('Starting to read SSE stream...');
+    
     const decoder = new TextDecoder();
     let buffer = '';
-    let conversationId: string | null = null;
+    let totalChunks = 0;
+    let lastEventId = '';
     
     while (true) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        debugLog('Stream done');
+        break;
+      }
       
       buffer += decoder.decode(value, { stream: true });
+      debugLog('Raw SSE data chunk:', value);
+      debugLog('Buffer after decode:', buffer.substring(0, 200));
+      
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       
       const chunks: string[] = [];
       let isDone = false;
+      let hasChunkDelta = false;
       
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+        const line = lines[i].trim();
+        if (!line) continue;
         
-        if (line.startsWith('event: SSE_ACK')) {
+        debugLog('Processing SSE line:', line);
+        
+        if (line.startsWith('id:')) {
+          lastEventId = line.slice(3).trim();
+          debugLog('Event ID:', lastEventId);
+        }
+        
+        if (line.startsWith('event: CHUNK_DELTA')) {
+          hasChunkDelta = true;
           const dataLine = lines[i + 1];
+          debugLog('Found CHUNK_DELTA, next line:', dataLine);
+          
           if (dataLine?.startsWith('data: ')) {
             try {
-              const data = JSON.parse(dataLine.slice(6));
-              if (data.ack_client_meta?.conversation_id) {
-                conversationId = data.ack_client_meta.conversation_id;
-                console.log('[OpenClaw Inject] Got conversation_id:', conversationId);
-              }
-            } catch (e) {}
-          }
-        } else if (line.startsWith('event: CHUNK_DELTA')) {
-          const dataLine = lines[i + 1];
-          if (dataLine?.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(dataLine.slice(6));
+              const jsonStr = dataLine.slice(6);
+              debugLog('Parsing JSON:', jsonStr);
+              const data = JSON.parse(jsonStr);
+              debugLog('Parsed data:', data);
+              
               if (data.text) {
                 chunks.push(data.text);
+                totalChunks++;
+                debugLog('Extracted text:', data.text);
               }
-            } catch (e) {}
+            } catch (e) {
+              debugLog('Failed to parse CHUNK_DELTA:', e, 'dataLine:', dataLine);
+            }
           }
         } else if (line.startsWith('event: SSE_REPLY_END')) {
+          debugLog('Found SSE_REPLY_END');
           isDone = true;
+        } else if (line.startsWith('event: SSE_ACK')) {
+          debugLog('Found SSE_ACK');
+        } else if (line.startsWith('event:')) {
+          debugLog('Found other event:', line);
         }
       }
       
-      if (conversationId) {
-        window.postMessage({
-          __openclaw: true,
-          type: 'response',
-          data: {
-            request_id: request.request_id,
-            conversation_id: conversationId,
-          },
-        }, '*');
-        conversationId = null;
-      }
-      
       if (chunks.length > 0) {
+        debugLog(`Sending ${chunks.length} chunks to content script`);
         window.postMessage({
           __openclaw: true,
           type: 'response',
@@ -294,6 +331,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       }
       
       if (isDone) {
+        debugLog('Stream complete, total chunks:', totalChunks);
         window.postMessage({
           __openclaw: true,
           type: 'response',
@@ -304,20 +342,24 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         }, '*');
       }
     }
+    
+    debugLog('Finished reading stream, total chunks sent:', totalChunks);
+    
   } catch (error: any) {
+    debugLog('Error during fetch:', error);
+    
     if (error.name === 'AbortError') {
-      console.log('[OpenClaw Inject] Request aborted');
+      debugLog('Request aborted');
       return;
     }
     
     if (retryCount < MAX_RETRIES) {
       const delay = 1000 * Math.pow(2, retryCount);
-      console.log(`[OpenClaw Inject] Error, retrying in ${delay}ms...`, error.message);
+      debugLog(`Error, retrying in ${delay}ms...`, error.message);
       await sleep(delay);
       return sendDoubaoChatWithRetry(request, retryCount + 1);
     }
     
-    console.error('[OpenClaw Inject] Request failed:', error);
     window.postMessage({
       __openclaw: true,
       type: 'response',
@@ -335,15 +377,33 @@ async function sendDoubaoChat(request: ChatRequest): Promise<void> {
   return sendDoubaoChatWithRetry(request, 0);
 }
 
+// 全局调试函数
+(window as any).testDoubaoRequest = async (message: string) => {
+  debugLog('Manual test triggered');
+  const testRequest: ChatRequest = {
+    request_id: 'test_' + Date.now(),
+    conversation_id: '',
+    bot_id: DOUBAO_BOT_ID,
+    need_deep_think: 1,
+    message: message,
+  };
+  
+  await sendDoubaoChat(testRequest);
+};
+
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
   
   const msg = event.data;
   if (!msg.__openclaw) return;
   
+  debugLog('Received message from content script:', msg.type);
+  
   if (msg.type === 'chat_request') {
+    debugLog('Starting chat request:', msg.data);
     sendDoubaoChat(msg.data);
   } else if (msg.type === 'cancel_request') {
+    debugLog('Cancelling request:', msg.data.request_id);
     const controller = abortControllers.get(msg.data.request_id);
     if (controller) {
       controller.abort();
@@ -352,7 +412,8 @@ window.addEventListener('message', (event) => {
   }
 });
 
-console.log('[OpenClaw Inject] Script loaded');
+console.log('[OpenClaw Inject] Script loaded. Debug mode:', DEBUG);
+console.log('[OpenClaw Inject] Test function available: window.testDoubaoRequest("your message")');
 
 window.postMessage({
   __openclaw: true,
