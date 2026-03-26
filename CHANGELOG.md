@@ -66,9 +66,9 @@ All notable changes to this project will be documented in this file.
 
 **问题**: 登录状态始终返回 false
 
-**原因**: 原有的选择器 `[class*="avatar"]` 在豆包页面上无法匹配到登录元素
+**原因**: 无法正确匹配豆包页面的登录按钮元素
 
-**解决方案**: 改用 `[class*="text-dbx-text-primary"]` 选择器，检查元素是否有文本内容来判断登录状态
+**解决方案**: 使用 `data-testid="toLogin"` 选择器检测登录按钮，找到即未登录，找不到即已登录
 
 #### 豆包会话 ID 获取问题
 
