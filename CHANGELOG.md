@@ -38,6 +38,21 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+#### minimatch 安全漏洞
+
+**问题**: minimatch 9.0.0 - 9.0.6 存在 6 个高危安全漏洞
+
+**原因**: 依赖包 `@typescript-eslint/typescript-estree` 使用了有漏洞的 minimatch 版本
+
+**解决方案**: 在 `package.json` 中添加 `overrides` 强制所有 minimatch 使用安全版本
+```json
+"overrides": {
+  "minimatch": "^9.0.9"
+}
+```
+
+**结果**: 漏洞数量从 6 high 降为 0
+
 #### TypeScript 编译错误
 
 **问题**: Chrome 插件编译时报错 `Cannot find name 'chrome'`
