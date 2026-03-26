@@ -75,25 +75,20 @@ function getConversationId(): string | null {
 
 function checkLoginStatus(): boolean {
   try {
-    const userDiv = document.querySelector('[class*="text-dbx-text-primary"]');
-    if (userDiv && userDiv.textContent && userDiv.textContent.trim()) {
-      console.log('[OpenClaw] 登录状态: true (找到用户名:', userDiv.textContent.trim(), ')');
-      return true;
+    const loginButton = document.querySelector('[class*="login"]') || 
+                        document.querySelector('[class*="Login"]') ||
+                        document.querySelector('button[class*="login"]');
+    
+    if (loginButton) {
+      console.log('[OpenClaw] 登录状态: false (找到登录按钮)');
+      return false;
     }
     
-    const userAvatar = document.querySelector('[class*="avatar"]') || 
-                       document.querySelector('[class*="user"]') ||
-                       document.querySelector('[data-testid="user-menu"]');
-    if (userAvatar) {
-      console.log('[OpenClaw] 登录状态: true (找到头像元素)');
-      return true;
-    }
-    
-    console.log('[OpenClaw] 登录状态: false (未找到登录元素)');
-    return false;
+    console.log('[OpenClaw] 登录状态: true (未找到登录按钮)');
+    return true;
   } catch (e) {
     console.error('[OpenClaw] 检测登录状态失败:', e);
-    return false;
+    return true;
   }
 }
 
