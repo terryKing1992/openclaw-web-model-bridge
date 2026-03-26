@@ -62,6 +62,14 @@ All notable changes to this project will be documented in this file.
 2. 发送 ping 前检查是否在等待 pong，如果是则关闭连接
 3. 收到 pong 后正确重置状态
 
+#### 登录状态检测问题
+
+**问题**: 登录状态始终返回 false
+
+**原因**: 原有的选择器 `[class*="avatar"]` 在豆包页面上无法匹配到登录元素
+
+**解决方案**: 改用 `[class*="text-dbx-text-primary"]` 选择器，检查元素是否有文本内容来判断登录状态
+
 #### 豆包会话 ID 获取问题
 
 **问题**: 无法自动获取豆包的会话 ID
