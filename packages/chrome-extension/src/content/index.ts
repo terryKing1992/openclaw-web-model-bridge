@@ -73,26 +73,9 @@ function getConversationId(): string | null {
   return null;
 }
 
-function checkLoginStatus(): boolean {
-  try {
-    const loginButton = document.querySelector('[data-testid="to_login_button"]');
-    
-    if (loginButton) {
-      console.log('[OpenClaw] 登录状态: false (找到登录按钮)');
-      return false;
-    }
-    
-    console.log('[OpenClaw] 登录状态: true (未找到登录按钮)');
-    return true;
-  } catch (e) {
-    console.error('[OpenClaw] 检测登录状态失败:', e);
-    return true;
-  }
-}
-
 function sendStatus() {
   const conversationId = getConversationId() || lastConversationId;
-  const loggedIn = checkLoginStatus();
+  const loggedIn = !!conversationId;
   
   console.log('[OpenClaw] 发送状态:', {
     pageOpened: true,
