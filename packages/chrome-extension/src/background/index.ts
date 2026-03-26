@@ -106,7 +106,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
           sendResponse({ error: e.message });
         });
       } else {
-        sendResponse({ error: 'No active doubao tab' });
+        sendResponse({ error: '请先打开豆包页面' });
       }
       return true;
     } else {
@@ -114,6 +114,33 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
       sendResponse({ received: true });
       return true;
     }
+  }
+  
+  // 来自 Popup 的 chat_to_doubao 请求，转发到 Content Script
+  if (message.type === 'chat_to_doubao') {
+    if (activeDoubaoTabId) {
+      console.log('[OpenClaw Background] 转发chat_to_doubao到豆包标签页:', activeDoubaoTabId);
+      // 转换为chat类型发送到content script
+      const chatMessage = {
+        type: 'chat',
+        request_id: message.request_id,
+        conversation_id: message.conversation_id,
+        bot_id: message.bot_id,
+        need_deep_think: message.need_deep_think,
+        message: message.message,
+      };
+      chrome.tabs.sendMessage(activeDoubaoTabId, chatMessage).then((response) => {
+        console.log('[OpenClaw Background] content script响应:', response);
+        sendResponse(response);
+      }).catch((e) => {
+        console.error('[OpenClaw Background] Failed to send to content script:', e);
+        sendResponse({ error: e.message });
+      });
+    } else {
+      console.error('[OpenClaw Background] 没有活动的豆包标签页');
+      sendResponse({ error: '请先打开豆包页面' });
+    }
+    return true;
   }
   
   return false;

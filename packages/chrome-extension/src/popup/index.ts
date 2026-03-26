@@ -60,40 +60,19 @@ async function sendDebugRequest() {
   }
   
   sendBtn.disabled = true;
-  status.textContent = '检查页面状态...';
+  status.textContent = '检查豆包页面...';
   status.className = 'debug-status loading show';
   output.className = 'debug-output';
   output.textContent = '等待响应...\n';
   
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    
-    if (!tabs[0]?.id) {
-      throw new Error('无法获取当前标签页');
-    }
-    
-    const tab = tabs[0];
-    const tabId = tab.id!;
-    
-    console.log('[OpenClaw Popup] 当前标签页:', { id: tabId, url: tab.url, title: tab.title });
-    
-    // 检查是否是豆包页面（放宽检测条件）
-    const url = tab.url || '';
-    console.log('[OpenClaw Popup] URL检测:', url, '包含doubao:', url.includes('doubao'));
-    
-    if (!url.includes('doubao') && !url.includes('byte')) {
-      console.error('[OpenClaw Popup] URL不匹配:', url);
-      throw new Error(`请先打开豆包页面 (当前页面: ${url || '未知'})`);
-    }
-    
-    status.textContent = '发送中...';
-    
     const requestId = 'debug_' + Date.now();
     
-    console.log('[OpenClaw Popup] 发送chat消息到content script:', { tabId, requestId });
+    console.log('[OpenClaw Popup] 发送chat请求到background:', { requestId, message });
     
-    const response = await chrome.tabs.sendMessage(tabId, {
-      type: 'chat',
+    // 通过background发送消息到豆包标签页
+    const response = await chrome.runtime.sendMessage({
+      type: 'chat_to_doubao',
       request_id: requestId,
       conversation_id: '',
       bot_id: '7338286299411103781',
@@ -101,7 +80,13 @@ async function sendDebugRequest() {
       message: message,
     });
     
-    console.log('[OpenClaw Popup] 收到content script响应:', response);
+    console.log('[OpenClaw Popup] 收到background响应:', response);
+    
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    
+    status.textContent = '发送中...';
     
     let fullText = '';
     let isComplete = false;
