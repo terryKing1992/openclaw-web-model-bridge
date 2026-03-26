@@ -38,6 +38,14 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+#### Chrome 扩展图标文件缺失
+
+**问题**: 安装 Chrome 扩展时报错 `Could not load icon 'icons/icon16.png' specified in 'icons'`
+
+**原因**: manifest.json 引用了图标文件，但项目中缺少这些文件
+
+**解决方案**: 创建图标文件 icons/icon16.png, icons/icon48.png, icons/icon128.png
+
 #### minimatch 安全漏洞
 
 **问题**: minimatch 9.0.0 - 9.0.6 存在 6 个高危安全漏洞
