@@ -77,7 +77,7 @@ function sendStatus() {
   });
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
   if (message.type === 'chat') {
     currentRequestId = message.request_id;
     sendChatMessage(message);

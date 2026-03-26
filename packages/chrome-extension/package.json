@@ -8,5 +8,7 @@
     "dev": "tsc --watch",
     "lint": "eslint src --ext .ts"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "@types/chrome": "^0.1.38"
+  }
 }

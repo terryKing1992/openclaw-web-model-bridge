@@ -72,7 +72,7 @@ document.getElementById('conversationId')?.addEventListener('change', (e) => {
   });
 });
 
-chrome.storage.local.get(['model'], (result) => {
+chrome.storage.local.get(['model'], (result: { [key: string]: any }) => {
   if (result.model) {
     const select = document.getElementById('modelSelect') as HTMLSelectElement;
     if (select) {

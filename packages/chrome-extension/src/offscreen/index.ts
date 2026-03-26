@@ -13,7 +13,7 @@ interface PluginStatus {
   url: string;
 }
 
-const status: PluginStatus = {
+const pluginStatus: PluginStatus = {
   pageOpened: false,
   loggedIn: false,
   conversationId: null,
@@ -90,7 +90,7 @@ function sendStatus() {
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: 'status',
-      ...status,
+      ...pluginStatus,
     }));
   }
 }
@@ -113,9 +113,9 @@ function handleMessage(msg: any) {
   }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
   if (message.type === 'status') {
-    Object.assign(status, message);
+    Object.assign(pluginStatus, message);
     sendStatus();
     sendResponse({ received: true });
   } else if (message.type === 'delta' || message.type === 'done' || message.type === 'error') {
@@ -124,9 +124,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
     sendResponse({ received: true });
   } else if (message.type === 'page_closed') {
-    status.pageOpened = false;
-    status.loggedIn = false;
-    status.conversationId = null;
+    pluginStatus.pageOpened = false;
+    pluginStatus.loggedIn = false;
+    pluginStatus.conversationId = null;
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'page_closed' }));
     }
@@ -134,7 +134,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   } else if (message.type === 'get_status') {
     sendResponse({
       connected: ws?.readyState === WebSocket.OPEN,
-      ...status,
+      ...pluginStatus,
     });
   }
   return true;

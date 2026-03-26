@@ -91,7 +91,12 @@ program
     try {
       const config = loadConfig();
       const response = await fetch(`http://127.0.0.1:${config.port}/v1/status`);
-      const status = await response.json();
+      const status = await response.json() as {
+        connected: boolean;
+        loggedIn: boolean;
+        conversationId: string | null;
+        model: string;
+      };
       
       console.log('\nOpenClaw Bridge 状态\n');
       console.log(`服务状态: ● 运行中`);

@@ -34,14 +34,14 @@ chrome.runtime.onStartup.addListener(() => {
 
 ensureOffscreenDocument();
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
   if (message.type === 'get_status' || 
       message.type === 'status' || 
       message.type === 'delta' || 
       message.type === 'done' || 
       message.type === 'error' ||
       message.type === 'page_closed') {
-    chrome.runtime.sendMessage(message).then((response) => {
+    chrome.runtime.sendMessage(message).then((response: any) => {
       sendResponse(response);
     });
     return true;
@@ -55,7 +55,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-chrome.tabs.onRemoved.addListener(async (tabId) => {
+chrome.tabs.onRemoved.addListener(async (tabId: number) => {
   try {
     await chrome.tabs.get(tabId);
   } catch {
