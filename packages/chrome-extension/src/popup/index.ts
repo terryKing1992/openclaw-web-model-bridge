@@ -73,28 +73,26 @@ async function sendDebugRequest() {
     }
     
     const tab = tabs[0];
-    const tabId = tab.id!;  // 我们知道这里一定有值
+    const tabId = tab.id!;
     
-    // 检查是否是豆包页面
-    if (!tab.url?.includes('doubao.com')) {
-      throw new Error('请先打开豆包页面 (https://www.doubao.com)');
-    }
+    console.log('[OpenClaw Popup] 当前标签页:', { id: tabId, url: tab.url, title: tab.title });
     
-    // 检查 content script 是否已注入
-    try {
-      await chrome.tabs.sendMessage(tabId, { type: 'ping' });
-    } catch (e: any) {
-      if (e.message?.includes('Receiving end does not exist')) {
-        throw new Error('Content Script 未加载，请刷新豆包页面');
-      }
-      throw e;
+    // 检查是否是豆包页面（放宽检测条件）
+    const url = tab.url || '';
+    console.log('[OpenClaw Popup] URL检测:', url, '包含doubao:', url.includes('doubao'));
+    
+    if (!url.includes('doubao') && !url.includes('byte')) {
+      console.error('[OpenClaw Popup] URL不匹配:', url);
+      throw new Error(`请先打开豆包页面 (当前页面: ${url || '未知'})`);
     }
     
     status.textContent = '发送中...';
     
     const requestId = 'debug_' + Date.now();
     
-    await chrome.tabs.sendMessage(tabId, {
+    console.log('[OpenClaw Popup] 发送chat消息到content script:', { tabId, requestId });
+    
+    const response = await chrome.tabs.sendMessage(tabId, {
       type: 'chat',
       request_id: requestId,
       conversation_id: '',
@@ -103,11 +101,15 @@ async function sendDebugRequest() {
       message: message,
     });
     
+    console.log('[OpenClaw Popup] 收到content script响应:', response);
+    
     let fullText = '';
     let isComplete = false;
     
     const listener = (msg: any) => {
       if (msg.request_id !== requestId) return;
+      
+      console.log('[OpenClaw Popup] 收到消息:', msg.type, msg);
       
       if (msg.type === 'delta') {
         fullText += msg.text;
@@ -142,6 +144,7 @@ async function sendDebugRequest() {
     }, 30000);
     
   } catch (error: any) {
+    console.error('[OpenClaw Popup] 错误:', error);
     status.textContent = '发送失败: ' + error.message;
     status.className = 'debug-status error show';
     output.textContent = `错误详情:\n${error.message}\n\n请确保:\n1. 已打开豆包页面\n2. 页面已完全加载\n3. 插件已启用\n\n如果问题持续，请刷新豆包页面。`;
