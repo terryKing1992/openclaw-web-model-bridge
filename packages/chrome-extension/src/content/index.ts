@@ -117,6 +117,7 @@ chrome.runtime.onMessage.addListener((message: any, _sender: chrome.runtime.Mess
 });
 
 function sendChatMessage(msg: any) {
+  console.log('[OpenClaw] 发送chat消息到inject, conversation_id:', msg.conversation_id);
   window.postMessage({
     __openclaw: true,
     type: 'chat_request',

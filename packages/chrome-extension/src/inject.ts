@@ -73,13 +73,14 @@ function buildRequestBody(request: ChatRequest): any {
   const body = {
     client_meta: {
       local_conversation_id: localConversationId,
-      conversation_id: request.conversation_id || '',
+      conversation_id: request.conversation_id,
       bot_id: request.bot_id || DOUBAO_BOT_ID,
       last_section_id: '',
       last_message_index: null,
     },
     messages: [{
       local_message_id: localMessageId,
+      message_status: 1,
       content_block: [{
         block_type: 10000,
         content: {
@@ -115,7 +116,7 @@ function buildRequestBody(request: ChatRequest): any {
       scene_type: 0,
       unique_key: crypto.randomUUID ? crypto.randomUUID() : generateMessageId(),
       start_seq: 0,
-      need_create_conversation: !request.conversation_id,
+      need_create_conversation: false,
       conversation_init_option: {
         need_ack_conversation: true,
       },
@@ -136,9 +137,15 @@ function buildRequestBody(request: ChatRequest): any {
       use_deep_think: String(request.need_deep_think),
       commerce_credit_config_enable: '0',
       sub_conv_firstmet_type: '1',
+      sub_conv_status: '1',
+      sub_conv_type: '1',
+      source: 'web',
     },
   };
   
+  debugLog('buildRequestBody - request.conversation_id:', request.conversation_id);
+  debugLog('buildRequestBody - body.client_meta.conversation_id:', body.client_meta.conversation_id);
+  debugLog('buildRequestBody - need_create_conversation:', body.option.need_create_conversation);
   debugLog('Request body:', JSON.stringify(body, null, 2));
   
   return body;
