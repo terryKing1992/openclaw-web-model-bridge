@@ -1,26 +1,14 @@
 let isCrashed = false;
 
-async function checkCrash() {
-  try {
-    await chrome.runtime.getBackgroundPage();
-    return false;
-  } catch {
-    return true;
-  }
-}
-
 async function updateStatus() {
-  const crashed = await checkCrash();
-  
-  if (crashed) {
-    isCrashed = true;
-    document.getElementById('normalView')!.style.display = 'none';
-    document.getElementById('crashView')!.style.display = 'block';
-    return;
-  }
-  
   try {
     const response = await chrome.runtime.sendMessage({ type: 'get_status' });
+    
+    if (isCrashed) {
+      isCrashed = false;
+      document.getElementById('normalView')!.style.display = 'block';
+      document.getElementById('crashView')!.style.display = 'none';
+    }
     
     const connectionDot = document.getElementById('connectionDot')!;
     const connectionStatus = document.getElementById('connectionStatus')!;
@@ -52,6 +40,9 @@ async function updateStatus() {
     }
   } catch (error) {
     console.error('获取状态失败:', error);
+    isCrashed = true;
+    document.getElementById('normalView')!.style.display = 'none';
+    document.getElementById('crashView')!.style.display = 'block';
   }
 }
 
