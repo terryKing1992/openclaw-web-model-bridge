@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Bridge</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f5f5f5;
+    }
+    
+    .container {
+      padding: 16px;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .refresh-btn {
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 4px 12px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .refresh-btn:hover {
+      background: #eee;
+    }
+    
+    .status-item {
+      display: flex;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: white;
+      border-radius: 6px;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 8px;
+    }
+    
+    .status-dot.connected {
+      background: #52c41a;
+    }
+    
+    .status-dot.disconnected {
+      background: #ff4d4f;
+    }
+    
+    .status-label {
+      flex: 1;
+      color: #666;
+    }
+    
+    .status-value {
+      font-weight: 500;
+    }
+    
+    .status-value.error {
+      color: #ff4d4f;
+    }
+    
+    .crash-container {
+      text-align: center;
+      padding: 24px;
+      background: white;
+      border-radius: 8px;
+    }
+    
+    .crash-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+    
+    .crash-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    
+    .crash-message {
+      color: #666;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    
+    .model-select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    
+    .model-select:focus {
+      outline: none;
+      border-color: #1890ff;
+    }
+    
+    .input-group {
+      margin-bottom: 12px;
+    }
+    
+    .input-label {
+      display: block;
+      margin-bottom: 4px;
+      color: #666;
+      font-size: 12px;
+    }
+    
+    .text-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    
+    .text-input:focus {
+      outline: none;
+      border-color: #1890ff;
+    }
+    
+    .warning {
+      background: #fff7e6;
+      border: 1px solid #ffd591;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: #d48806;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <span class="title">OpenClaw Bridge</span>
+      <button class="refresh-btn" id="refreshBtn">刷新</button>
+    </div>
+    
+    <div id="normalView">
+      <div class="status-item">
+        <div class="status-dot" id="connectionDot"></div>
+        <span class="status-label">连接状态</span>
+        <span class="status-value" id="connectionStatus">-</span>
+      </div>
+      
+      <div class="status-item">
+        <div class="status-dot" id="injectDot"></div>
+        <span class="status-label">注入状态</span>
+        <span class="status-value" id="injectStatus">-</span>
+      </div>
+      
+      <div class="input-group">
+        <label class="input-label">会话ID (从URL自动获取)</label>
+        <input type="text" class="text-input" id="conversationId" placeholder="请打开豆包聊天页面">
+      </div>
+      
+      <div class="input-group">
+        <label class="input-label">模型模式</label>
+        <select class="model-select" id="modelSelect">
+          <option value="doubao-fast">快速</option>
+          <option value="doubao-think">思考</option>
+          <option value="doubao-expert">专家</option>
+        </select>
+      </div>
+    </div>
+    
+    <div id="crashView" style="display: none;">
+      <div class="crash-container">
+        <div class="crash-icon">💔</div>
+        <div class="crash-title">插件已崩溃</div>
+        <div class="crash-message">
+          请尝试重启浏览器或重新安装插件
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

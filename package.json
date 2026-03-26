@@ -1,0 +1,25 @@
+{
+  "name": "@openclaw/bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "通过Chrome插件访问豆包网页模型，提供OpenAI协议兼容的本地代理服务器",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -ws",
+    "dev": "npm run dev -ws",
+    "lint": "eslint packages/*/src --ext .ts",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
