@@ -60,20 +60,40 @@ async function sendDebugRequest() {
   }
   
   sendBtn.disabled = true;
-  status.textContent = '发送中...';
+  status.textContent = '检查页面状态...';
   status.className = 'debug-status loading show';
   output.className = 'debug-output';
   output.textContent = '等待响应...\n';
   
   try {
-    const requestId = 'debug_' + Date.now();
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     
     if (!tabs[0]?.id) {
       throw new Error('无法获取当前标签页');
     }
     
-    await chrome.tabs.sendMessage(tabs[0].id, {
+    const tab = tabs[0];
+    
+    // 检查是否是豆包页面
+    if (!tab.url?.includes('doubao.com')) {
+      throw new Error('请先打开豆包页面 (https://www.doubao.com)');
+    }
+    
+    // 检查 content script 是否已注入
+    try {
+      await chrome.tabs.sendMessage(tab.id, { type: 'ping' });
+    } catch (e: any) {
+      if (e.message?.includes('Receiving end does not exist')) {
+        throw new Error('Content Script 未加载，请刷新豆包页面');
+      }
+      throw e;
+    }
+    
+    status.textContent = '发送中...';
+    
+    const requestId = 'debug_' + Date.now();
+    
+    await chrome.tabs.sendMessage(tab.id, {
       type: 'chat',
       request_id: requestId,
       conversation_id: '',
@@ -123,7 +143,7 @@ async function sendDebugRequest() {
   } catch (error: any) {
     status.textContent = '发送失败: ' + error.message;
     status.className = 'debug-status error show';
-    output.textContent = `错误详情:\n${error.stack || error.message}`;
+    output.textContent = `错误详情:\n${error.message}\n\n请确保:\n1. 已打开豆包页面\n2. 页面已完全加载\n3. 插件已启用\n\n如果问题持续，请刷新豆包页面。`;
     sendBtn.disabled = false;
   }
 }

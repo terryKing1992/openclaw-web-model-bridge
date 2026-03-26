@@ -99,7 +99,11 @@ function sendStatus() {
 }
 
 chrome.runtime.onMessage.addListener((message: any, _sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-  if (message.type === 'chat') {
+  console.log('[OpenClaw] 收到消息:', message.type, message);
+  
+  if (message.type === 'ping') {
+    sendResponse({ pong: true, timestamp: Date.now() });
+  } else if (message.type === 'chat') {
     currentRequestId = message.request_id;
     sendChatMessage(message);
     sendResponse({ received: true });
