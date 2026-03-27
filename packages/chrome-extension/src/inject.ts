@@ -266,35 +266,6 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     const decoder = new TextDecoder();
     let buffer = '';
     let totalChunks = 0;
-    let lastEventId = '';
-    
-    // 解析 SSE 事件的辅助函数
-    function parseSSEEvents(data: string): { events: Array<{id?: string, event?: string, data?: string}>, remaining: string } {
-      const events: Array<{id?: string, event?: string, data?: string}> = [];
-      const parts = data.split('\n\n');
-      const remaining = parts.pop() || '';
-      
-      for (const part of parts) {
-        const lines = part.split('\n');
-        let event: {id?: string, event?: string, data?: string} = {};
-        
-        for (const line of lines) {
-          if (line.startsWith('id:')) {
-            event.id = line.slice(3).trim();
-          } else if (line.startsWith('event:')) {
-            event.event = line.slice(6).trim();
-          } else if (line.startsWith('data:')) {
-            event.data = line.slice(5).trim();
-          }
-        }
-        
-        if (event.event) {
-          events.push(event);
-        }
-      }
-      
-      return { events, remaining };
-    }
     
     while (true) {
       const { done, value } = await reader.read();
@@ -304,38 +275,72 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       }
       
       buffer += decoder.decode(value, { stream: true });
-      debugLog('=== New SSE data ===');
-      debugLog('Full decoded data:', buffer);
       
-      const { events, remaining } = parseSSEEvents(buffer);
-      buffer = remaining;
-      
-      debugLog('Parsed', events.length, 'events, buffer remaining:', buffer.length);
+      // SSE 事件以 \n\n 分隔
+      const eventBlocks = buffer.split('\n\n');
+      buffer = eventBlocks.pop() || '';
       
       const chunks: string[] = [];
       let isDone = false;
       
-      for (const event of events) {
-        debugLog('Event:', event.event, 'id:', event.id);
+      for (const eventBlock of eventBlocks) {
+        if (!eventBlock.trim()) continue;
         
-        // 只处理 CHUNK_DELTA 事件
-        if (event.event === 'CHUNK_DELTA' && event.data) {
+        const lines = eventBlock.split('\n');
+        let eventType = '';
+        let eventData = '';
+        
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            eventData = line.slice(5).trim();
+          }
+        }
+        
+        if (!eventType) continue;
+        
+        // 处理 STREAM_MSG_NOTIFY (包含第一个字)
+        if (eventType === 'STREAM_MSG_NOTIFY' && eventData) {
           try {
-            const data = JSON.parse(event.data);
-            if (data.text) {
-              chunks.push(data.text);
+            const data = JSON.parse(eventData);
+            const text = data?.content?.content_block?.[0]?.content?.text_block?.text;
+            if (text) {
+              chunks.push(text);
               totalChunks++;
-              debugLog(`Chunk #${totalChunks}: "${data.text}"`);
+              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY: "${text}"`);
             }
           } catch (e) {
-            debugLog('Failed to parse CHUNK_DELTA data:', e);
+            debugLog('Failed to parse STREAM_MSG_NOTIFY:', e);
           }
           continue;
         }
         
-        if (event.event === 'SSE_REPLY_END') {
+        // 处理 CHUNK_DELTA (增量文本)
+        if (eventType === 'CHUNK_DELTA' && eventData) {
+          try {
+            const data = JSON.parse(eventData);
+            if (data.text) {
+              chunks.push(data.text);
+              totalChunks++;
+              debugLog(`Chunk #${totalChunks} from CHUNK_DELTA: "${data.text}"`);
+            }
+          } catch (e) {
+            debugLog('Failed to parse CHUNK_DELTA:', e);
+          }
+          continue;
+        }
+        
+        // 处理 SSE_REPLY_END (流结束)
+        if (eventType === 'SSE_REPLY_END') {
           debugLog('Found SSE_REPLY_END');
           isDone = true;
+          continue;
+        }
+        
+        // 忽略其他事件
+        if (eventType !== 'SSE_HEARTBEAT' && eventType !== 'SSE_ACK' && eventType !== 'STREAM_CHUNK') {
+          debugLog('Ignoring event:', eventType);
         }
       }
       
