@@ -88,9 +88,13 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
     if (sender.tab) {
       // 来自 content script，转发到 offscreen
       if (message.type === 'delta') {
-        console.log(`[BACKGROUND] 转发delta到offscreen: ${message.chunk_id}, text: "${message.text?.substring(0, 20)}"`);
+        console.log(`[BACKGROUND] 收到delta from tab:${sender.tab.id}, 转发到offscreen: ${message.chunk_id}, text: "${message.text?.substring(0, 20)}"`);
       }
-      chrome.runtime.sendMessage(message).catch((e) => {
+      chrome.runtime.sendMessage(message).then(() => {
+        if (message.type === 'delta') {
+          console.log(`[BACKGROUND] delta已广播: ${message.chunk_id}`);
+        }
+      }).catch((e) => {
         console.error('[OpenClaw Background] Failed to forward to offscreen:', e);
       });
     }

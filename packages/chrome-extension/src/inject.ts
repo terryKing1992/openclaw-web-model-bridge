@@ -347,16 +347,21 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         // 忽略 CHUNK_DELTA 和其他事件
       }
       
+      debugLog('=== SSE解析完成 ===');
+      debugLog(`本轮收到事件: ${eventBlocks.length} 个`);
+      debugLog(`本轮提取chunks: ${chunks.length} 个`);
+      debugLog(`累计总chunks: ${totalChunks} 个`);
+      
       if (chunks.length > 0) {
-        const chunkIds = chunks.map((c, i) => `${totalChunks - chunks.length + i + 1}`);
-        debugLog(`[INJECT] Sending ${chunks.length} chunks, IDs: [${chunkIds.join(', ')}], texts: [${chunks.map(c => `"${c.substring(0, 20)}"`).join(', ')}]`);
+        const chunkSummary = chunks.map((c, i) => `[${i}]"${c}"`).join(' ');
+        debugLog(`[INJECT -> CONTENT] 发送 ${chunks.length} chunks: ${chunkSummary}`);
         window.postMessage({
           __openclaw: true,
           type: 'response',
           data: {
             request_id: request.request_id,
             chunks,
-            _seq: totalChunks, // 添加序号帮助追踪
+            _seq: totalChunks,
           },
         }, '*');
       }
@@ -423,21 +428,17 @@ async function sendDoubaoChat(request: ChatRequest): Promise<void> {
 };
 
 window.addEventListener('message', (event) => {
-  debugLog('Received window message:', event.data);
-  debugLog('Event source:', event.source === window ? 'same window' : 'different window');
-  
-  if (event.source !== window) {
-    debugLog('Ignoring message from different source');
-    return;
-  }
+  if (event.source !== window) return;
   
   const msg = event.data;
-  if (!msg.__openclaw) {
-    debugLog('Ignoring message without __openclaw flag');
+  if (!msg.__openclaw) return;
+  
+  // 只处理来自 Content Script 的请求消息，忽略自己的响应消息
+  if (msg.type === 'response' || msg.type === 'injected') {
     return;
   }
   
-  debugLog('Processing message from content script:', msg.type);
+  debugLog('Processing message:', msg.type);
   
   if (msg.type === 'chat_request') {
     debugLog('Starting chat request:', msg.data);
