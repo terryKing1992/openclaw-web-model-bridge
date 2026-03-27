@@ -271,62 +271,69 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        debugLog('Stream done');
+        debugLog('Stream done, total chunks extracted:', totalChunks);
         break;
       }
       
       buffer += decoder.decode(value, { stream: true });
-      debugLog('Raw SSE data chunk:', value);
-      debugLog('Buffer after decode:', buffer.substring(0, 200));
+      debugLog('=== New SSE data received ===');
+      debugLog('Buffer length:', buffer.length);
+      debugLog('Buffer preview:', buffer.substring(0, 300));
       
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       
+      debugLog('Split into', lines.length, 'lines, buffer remaining:', buffer.length);
+      
       const chunks: string[] = [];
       let isDone = false;
-      let hasChunkDelta = false;
       
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        debugLog('Processing SSE line:', line);
-        
         if (line.startsWith('id:')) {
           lastEventId = line.slice(3).trim();
-          debugLog('Event ID:', lastEventId);
+          continue;
         }
         
         if (line.startsWith('event: CHUNK_DELTA')) {
-          hasChunkDelta = true;
           const dataLine = lines[i + 1];
-          debugLog('Found CHUNK_DELTA, next line:', dataLine);
           
           if (dataLine?.startsWith('data: ')) {
             try {
               const jsonStr = dataLine.slice(6);
-              debugLog('Parsing JSON:', jsonStr);
               const data = JSON.parse(jsonStr);
-              debugLog('Parsed data:', data);
               
               if (data.text) {
                 chunks.push(data.text);
                 totalChunks++;
-                debugLog('Extracted text:', data.text);
+                debugLog(`Chunk #${totalChunks}:`, data.text.substring(0, 50));
               }
             } catch (e) {
               debugLog('Failed to parse CHUNK_DELTA:', e, 'dataLine:', dataLine);
             }
           }
-        } else if (line.startsWith('event: SSE_REPLY_END')) {
-          debugLog('Found SSE_REPLY_END');
+          continue;
+        }
+        
+        if (line.startsWith('event: SSE_REPLY_END')) {
+          debugLog('Found SSE_REPLY_END, stream will end');
           isDone = true;
-        } else if (line.startsWith('event: SSE_ACK')) {
-          debugLog('Found SSE_ACK');
-        } else if (line.startsWith('event:')) {
-          debugLog('Found other event:', line);
+          continue;
+        }
+        
+        if (line.startsWith('event: SSE_ACK')) {
+          continue;
+        }
+        
+        if (line.startsWith('event:')) {
+          debugLog('Unknown event:', line);
+          continue;
         }
       }
+      
+      debugLog(`This batch: ${chunks.length} chunks, total so far: ${totalChunks}`);
       
       if (chunks.length > 0) {
         debugLog(`Sending ${chunks.length} chunks to content script`);
