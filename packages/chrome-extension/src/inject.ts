@@ -316,19 +316,19 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 处理 STREAM_CHUNK (增量 patch)
+        // 处理 STREAM_CHUNK (tts_content)
         if (eventType === 'STREAM_CHUNK') {
           try {
             const data = JSON.parse(eventData);
             const patchOps = data?.patch_op || [];
             for (const op of patchOps) {
-              // patch_object=1 表示内容更新
-              if (op.patch_object === 1 && op.patch_type === 1) {
-                const text = op.patch_value?.content_block?.[0]?.content?.text_block?.text;
-                if (text) {
-                  chunks.push(text);
+              // patch_object=111 表示 tts_content 更新
+              if (op.patch_object === 111 && op.patch_type === 1) {
+                const ttsContent = op.patch_value?.tts_content;
+                if (ttsContent) {
+                  chunks.push(ttsContent);
                   totalChunks++;
-                  debugLog(`Chunk #${totalChunks} from STREAM_CHUNK: "${text}"`);
+                  debugLog(`Chunk #${totalChunks} from STREAM_CHUNK tts_content: "${ttsContent}"`);
                 }
               }
             }
@@ -345,7 +345,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 忽略其他事件（CHUNK_DELTA, SSE_HEARTBEAT, SSE_ACK 等）
+        // 忽略其他事件
       }
       
       if (chunks.length > 0) {
