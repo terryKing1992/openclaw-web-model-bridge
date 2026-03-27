@@ -8,7 +8,7 @@ import { generateRequestId, formatSSE, formatOpenAIError } from './utils.js';
 import { truncateMessages, buildDoubaoMessage } from './context.js';
 import * as logger from './logger.js';
 
-const app = express();
+const app: express.Application = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
 

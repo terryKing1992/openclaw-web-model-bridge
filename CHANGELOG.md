@@ -38,6 +38,42 @@ All notable changes to this project will be documented in this file.
 
 ### 修复
 
+#### WebSocket 消息转发回调问题
+
+**问题**: 通过 Node Server 调用豆包接口时请求快速关闭，但插件直接调试正常
+
+**原因**: Offscreen 发送消息给 Background 时未正确处理响应回调，导致消息转发失败
+- 使用 `.catch()` 处理 Promise 但缺少回调
+- Background 期望返回响应但未正确处理
+
+**解决方案**:
+1. 使用回调函数 `chrome.runtime.sendMessage(msg, callback)` 替代 Promise
+2. 检查 `chrome.runtime.lastError` 错误状态
+3. 添加成功/失败响应日志便于调试
+
+#### 豆包 API 请求体格式问题
+
+**问题**: 会话无法正确创建或接续，conversation_id 传递失败
+
+**原因**: 
+1. `conversation_id` 被设置为 `request.conversation_id || ''`，空字符串导致无法匹配现有会话
+2. `need_create_conversation` 动态判断逻辑不符合实际 API 要求
+3. 缺少 `message_status` 等必要字段
+
+**解决方案**:
+1. 直接传递 `conversation_id` 原始值，不再默认空字符串
+2. 将 `need_create_conversation` 改为固定 `false`
+3. 添加 `message_status: 1` 到 messages 数组
+4. 添加 `sub_conv_status`、`sub_conv_type`、`source` 等 ext 字段
+
+#### Express 类型推断问题
+
+**问题**: 构建时报错 `TS2883: The inferred type of 'app' cannot be named without a reference to 'Express'`
+
+**原因**: pnpm 的 `.store` 目录结构导致 TypeScript 无法正确推断 express 类型
+
+**解决方案**: 为 `app` 变量添加显式类型注解 `const app: express.Application = express()`
+
 #### Content Script ES Module 问题
 
 **问题**: Content Script 报错 `Cannot use import statement outside a module`
