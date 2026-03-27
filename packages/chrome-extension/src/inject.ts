@@ -300,30 +300,14 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         
         if (!eventType) continue;
         
-        // 处理 STREAM_MSG_NOTIFY (包含第一个字)
-        if (eventType === 'STREAM_MSG_NOTIFY' && eventData) {
-          try {
-            const data = JSON.parse(eventData);
-            const text = data?.content?.content_block?.[0]?.content?.text_block?.text;
-            if (text) {
-              chunks.push(text);
-              totalChunks++;
-              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY: "${text}"`);
-            }
-          } catch (e) {
-            debugLog('Failed to parse STREAM_MSG_NOTIFY:', e);
-          }
-          continue;
-        }
-        
-        // 处理 CHUNK_DELTA (增量文本)
+        // 只处理 CHUNK_DELTA 事件（增量文本）
         if (eventType === 'CHUNK_DELTA' && eventData) {
           try {
             const data = JSON.parse(eventData);
             if (data.text) {
               chunks.push(data.text);
               totalChunks++;
-              debugLog(`Chunk #${totalChunks} from CHUNK_DELTA: "${data.text}"`);
+              debugLog(`Chunk #${totalChunks}: "${data.text}"`);
             }
           } catch (e) {
             debugLog('Failed to parse CHUNK_DELTA:', e);
@@ -331,17 +315,14 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 处理 SSE_REPLY_END (流结束)
+        // 处理流结束
         if (eventType === 'SSE_REPLY_END') {
           debugLog('Found SSE_REPLY_END');
           isDone = true;
           continue;
         }
         
-        // 忽略其他事件
-        if (eventType !== 'SSE_HEARTBEAT' && eventType !== 'SSE_ACK' && eventType !== 'STREAM_CHUNK') {
-          debugLog('Ignoring event:', eventType);
-        }
+        // 忽略所有其他事件（STREAM_MSG_NOTIFY, STREAM_CHUNK, SSE_HEARTBEAT, SSE_ACK 等）
       }
       
       if (chunks.length > 0) {
