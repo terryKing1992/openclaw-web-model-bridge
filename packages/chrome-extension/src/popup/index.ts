@@ -91,13 +91,15 @@ async function sendDebugRequest() {
     let fullText = '';
     let isComplete = false;
     
-    const listener = (msg: any) => {
+const listener = (msg: any) => {
       if (msg.request_id !== requestId) return;
       
-      console.log('[OpenClaw Popup] 收到消息:', msg.type, msg);
+      const timestamp = Date.now();
+      console.log(`[Popup] ${timestamp} 收到消息: type=${msg.type}, chunk_id=${msg.chunk_id || 'N/A'}, text="${msg.text?.substring(0, 50) || ''}"`);
       
       if (msg.type === 'delta') {
         fullText += msg.text;
+        console.log(`[Popup] 累积文本: "${fullText}"`);
         output.textContent = `Request ID: ${requestId}\n\n响应内容:\n${fullText}\n\n原始数据:\n${JSON.stringify(msg, null, 2)}\n\n--- 持续接收中 ---`;
       } else if (msg.type === 'done') {
         isComplete = true;
