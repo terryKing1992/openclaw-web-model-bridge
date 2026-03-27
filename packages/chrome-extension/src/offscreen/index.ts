@@ -158,12 +158,20 @@ function handleMessage(msg: any) {
 chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   console.log('[OpenClaw Offscreen] Received:', message.type, 'from:', sender.tab ? 'content' : 'extension');
   
+  // 只处理来自 extension (background) 的消息，忽略来自 content script 的直接消息
+  // 因为 content script 的消息会先发送到 background，再由 background 转发到这里
+  if (sender.tab) {
+    console.log('[OpenClaw Offscreen] Ignoring direct message from content script (will be forwarded by background)');
+    sendResponse({ received: true });
+    return true;
+  }
+  
   if (message.type === 'status') {
     Object.assign(pluginStatus, message);
     sendStatus();
     sendResponse({ received: true });
   } else if (message.type === 'delta' || message.type === 'done' || message.type === 'error') {
-    // 来自content script的响应，转发到proxy
+    // 来自background转发的消息，转发到proxy
     if (ws?.readyState === WebSocket.OPEN) {
       console.log('[OpenClaw Offscreen] Forwarding to proxy:', message.type, message);
       ws.send(JSON.stringify(message));
