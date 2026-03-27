@@ -5,7 +5,7 @@ import { loadConfig } from './config.js';
 import { PluginStatus, WSMessage, MODEL_MAP, DOUBAO_BOT_ID } from './types/ws.js';
 import { OpenAIChatRequest, OpenAIModelsResponse, OpenAIError } from './types/openai.js';
 import { generateRequestId, formatSSE, formatOpenAIError } from './utils.js';
-import { truncateMessages, buildDoubaoMessage } from './context.js';
+import { truncateMessages, buildDoubaoMessage, limitMessageLength, halveMessages } from './context.js';
 import * as logger from './logger.js';
 
 // 全局错误处理
@@ -192,10 +192,16 @@ app.post('/v1/chat/completions', async (req, res) => {
     const model = chatRequest.model || 'doubao-fast';
     const needDeepThink = MODEL_MAP[model] || 1;
     
-    const messages = truncateMessages(chatRequest.messages);
-    const message = buildDoubaoMessage(messages);
+    // 先限制消息轮数，再限制总长度
+    let messages = truncateMessages(chatRequest.messages);
+    messages = limitMessageLength(messages);
+    let message = buildDoubaoMessage(messages);
     
-    logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message=${message.substring(0, 100)}`);
+    logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message长度=${message.length}`);
+    
+    // 重试计数器
+    let retryCount = 0;
+    const maxRetries = 1;
   
   if (chatRequest.stream !== false) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -277,6 +283,45 @@ app.post('/v1/chat/completions', async (req, res) => {
       },
       reject: (error: Error) => {
         logger.error(`reject called: ${error.message}`);
+        
+        // 检查是否是内容过长错误
+        if (error.message.includes('CONTEXT_TOO_LONG') || 
+            error.message.includes('context') || 
+            error.message.includes('too long') ||
+            error.message.includes('长度')) {
+          logger.warn(`检测到内容过长错误，当前消息长度: ${message.length}`);
+          
+          // 如果还可以重试
+          if (retryCount < maxRetries) {
+            retryCount++;
+            logger.info(`尝试截断一半消息后重试 (${retryCount}/${maxRetries})`);
+            
+            // 截断一半消息
+            messages = halveMessages(messages);
+            message = buildDoubaoMessage(messages);
+            logger.info(`截断后消息长度: ${message.length}`);
+            
+            // 重新发送请求
+            const newRequestId = generateRequestId();
+            const wsMessage: WSMessage = {
+              type: 'chat',
+              request_id: newRequestId,
+              conversation_id: pluginStatus.conversationId!,
+              bot_id: DOUBAO_BOT_ID,
+              need_deep_think: needDeepThink,
+              message,
+            };
+            
+            wsClient?.send(JSON.stringify(wsMessage));
+            logger.info(`重试请求: ${newRequestId}`);
+            
+            // 更新 pending request
+            pendingRequests.delete(requestId);
+            pendingRequests.set(newRequestId, pending);
+            return;
+          }
+        }
+        
         isCompleted = true;
         clearInterval(checkDone);
         res.write(formatSSE({
