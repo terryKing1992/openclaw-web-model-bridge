@@ -8,6 +8,16 @@ import { generateRequestId, formatSSE, formatOpenAIError } from './utils.js';
 import { truncateMessages, buildDoubaoMessage } from './context.js';
 import * as logger from './logger.js';
 
+// 全局错误处理
+process.on('uncaughtException', (error) => {
+  logger.error(`Uncaught Exception: ${error.message}`);
+  logger.error(`Stack: ${error.stack}`);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
+
 const app: express.Application = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
@@ -111,9 +121,13 @@ app.use(express.json({
   type: 'application/json'
 }));
 
-// 确保响应使用 UTF-8 编码
+// 确保响应使用 UTF-8 编码（仅对 JSON 响应）
 app.use((req, res, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  const originalJson = res.json;
+  res.json = function(body: any) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return originalJson.call(this, body);
+  };
   next();
 });
 
@@ -134,63 +148,82 @@ app.get('/v1/status', (_req, res) => {
 });
 
 app.post('/v1/chat/completions', async (req, res) => {
-  // 使用 Buffer 正确解码中文
-  const rawBody = JSON.stringify(req.body);
-  logger.info(`收到OpenAI请求: ${rawBody}`);
-  
-  if (!pluginStatus.connected) {
-    logger.error('插件未连接');
-    const error: OpenAIError = formatOpenAIError('插件未连接，请确保已安装Chrome插件', 'plugin_disconnected', 503);
-    return res.status(503).json(error);
-  }
-  
-  if (!pluginStatus.pageOpened) {
-    logger.error('页面未打开');
-    const error: OpenAIError = formatOpenAIError('请打开豆包页面后重试', 'page_closed', 503);
-    return res.status(503).json(error);
-  }
-  
-  if (!pluginStatus.loggedIn) {
-    logger.error('用户未登录');
-    const error: OpenAIError = formatOpenAIError('请在豆包页面登录后重试', 'not_logged_in', 503);
-    return res.status(503).json(error);
-  }
-  
-  // 检查会话ID
-  if (!pluginStatus.conversationId) {
-    logger.error('未获取到会话ID');
-    const error: OpenAIError = formatOpenAIError('未获取到豆包会话ID，请刷新豆包页面', 'no_conversation_id', 503);
-    return res.status(503).json(error);
-  }
-  
-  const chatRequest = req.body as OpenAIChatRequest;
-  const requestId = generateRequestId();
-  const model = chatRequest.model || 'doubao-fast';
-  const needDeepThink = MODEL_MAP[model] || 1;
-  
-  const messages = truncateMessages(chatRequest.messages);
-  const message = buildDoubaoMessage(messages);
-  
-  logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message=${message.substring(0, 100)}`);
+  try {
+    // 使用 Buffer 正确解码中文
+    const rawBody = JSON.stringify(req.body);
+    logger.info(`收到OpenAI请求: ${rawBody}`);
+    
+    if (!pluginStatus.connected) {
+      logger.error('插件未连接');
+      const error: OpenAIError = formatOpenAIError('插件未连接，请确保已安装Chrome插件', 'plugin_disconnected', 503);
+      return res.status(503).json(error);
+    }
+    
+    if (!pluginStatus.pageOpened) {
+      logger.error('页面未打开');
+      const error: OpenAIError = formatOpenAIError('请打开豆包页面后重试', 'page_closed', 503);
+      return res.status(503).json(error);
+    }
+    
+    if (!pluginStatus.loggedIn) {
+      logger.error('用户未登录');
+      const error: OpenAIError = formatOpenAIError('请在豆包页面登录后重试', 'not_logged_in', 503);
+      return res.status(503).json(error);
+    }
+    
+    // 检查会话ID
+    if (!pluginStatus.conversationId) {
+      logger.error('未获取到会话ID');
+      const error: OpenAIError = formatOpenAIError('未获取到豆包会话ID，请刷新豆包页面', 'no_conversation_id', 503);
+      return res.status(503).json(error);
+    }
+    
+    const chatRequest = req.body as OpenAIChatRequest;
+    const requestId = generateRequestId();
+    const model = chatRequest.model || 'doubao-fast';
+    const needDeepThink = MODEL_MAP[model] || 1;
+    
+    const messages = truncateMessages(chatRequest.messages);
+    const message = buildDoubaoMessage(messages);
+    
+    logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message=${message.substring(0, 100)}`);
   
   if (chatRequest.stream !== false) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     
-    res.write(formatSSE({
+    // 强制发送响应头
+    const headWritten = (res as any)._headerSent;
+    logger.info(`发送响应头前，headersSent: ${headWritten}`);
+    
+    // 显式写入响应头
+    res.writeHead(200);
+    logger.info(`响应头已发送，headersSent: ${(res as any)._headerSent}`);
+    
+    const initialData = formatSSE({
       id: `chatcmpl-${requestId}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
       model,
       choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
-    }));
+    });
     
-    // 立即刷新响应，确保客户端收到数据
-    const resAny = res as any;
-    if (typeof resAny.flush === 'function') {
-      resAny.flush();
-      logger.info('响应已刷新');
+    logger.info(`准备写入初始 SSE 数据，长度: ${initialData.length}`);
+    
+    const written = res.write(initialData, 'utf8', () => {
+      logger.info('初始 SSE 数据写入回调触发');
+    });
+    
+    logger.info(`res.write 返回值: ${written}`);
+    
+    // 强制刷新 socket
+    const socket = (res as any).socket;
+    if (socket && typeof socket.write === 'function') {
+      socket.write('', () => {
+        logger.info('Socket 空写入完成，数据应该已发送');
+      });
     }
     
     const wsMessage: WSMessage = {
@@ -254,16 +287,32 @@ app.post('/v1/chat/completions', async (req, res) => {
     pendingRequests.set(requestId, pending);
     
     let isCompleted = false;
+    const startTime = Date.now();
     
+    // 监听请求事件
     req.on('close', () => {
+      const elapsed = Date.now() - startTime;
       if (isCompleted) {
-        logger.info(`请求正常完成关闭: requestId=${requestId}`);
+        logger.info(`请求正常完成关闭: requestId=${requestId}, 耗时: ${elapsed}ms`);
         return;
       }
-      logger.info(`请求异常关闭，发送cancel: requestId=${requestId}`);
+      logger.info(`请求异常关闭: requestId=${requestId}, 耗时: ${elapsed}ms`);
+      logger.info(`请求异常关闭可能原因: 客户端超时、网络中断或主动取消`);
       wsClient?.send(JSON.stringify({ type: 'cancel', request_id: requestId }));
       pendingRequests.delete(requestId);
       clearInterval(checkDone);
+    });
+    
+    req.on('error', (err) => {
+      logger.error(`请求错误: requestId=${requestId}, error: ${err.message}`);
+    });
+    
+    res.on('close', () => {
+      logger.info(`响应连接关闭: requestId=${requestId}`);
+    });
+    
+    res.on('error', (err: any) => {
+      logger.error(`响应错误: requestId=${requestId}, error: ${err.message}`);
     });
     
     const checkDone = setInterval(() => {
@@ -350,12 +399,26 @@ app.post('/v1/chat/completions', async (req, res) => {
       });
     });
   }
+  } catch (error: any) {
+    logger.error(`处理请求异常: ${error.message}`);
+    logger.error(`异常堆栈: ${error.stack}`);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+    }
+  }
 });
 
 export function startServer(port?: number, bind?: string) {
   const config = loadConfig();
   const actualPort = port || config.port;
   const actualBind = bind || config.bind;
+  
+  // 设置服务器超时
+  server.timeout = config.timeout;
+  server.keepAliveTimeout = config.timeout;
+  server.headersTimeout = config.timeout + 1000;
+  
+  logger.info(`服务器超时设置: timeout=${server.timeout}, keepAliveTimeout=${server.keepAliveTimeout}`);
   
   server.listen(actualPort, actualBind, () => {
     console.log(`OpenClaw Bridge 已启动`);
