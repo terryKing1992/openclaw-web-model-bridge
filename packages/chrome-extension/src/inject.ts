@@ -268,6 +268,34 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     let totalChunks = 0;
     let lastEventId = '';
     
+    // 解析 SSE 事件的辅助函数
+    function parseSSEEvents(data: string): { events: Array<{id?: string, event?: string, data?: string}>, remaining: string } {
+      const events: Array<{id?: string, event?: string, data?: string}> = [];
+      const parts = data.split('\n\n');
+      const remaining = parts.pop() || '';
+      
+      for (const part of parts) {
+        const lines = part.split('\n');
+        let event: {id?: string, event?: string, data?: string} = {};
+        
+        for (const line of lines) {
+          if (line.startsWith('id:')) {
+            event.id = line.slice(3).trim();
+          } else if (line.startsWith('event:')) {
+            event.event = line.slice(6).trim();
+          } else if (line.startsWith('data:')) {
+            event.data = line.slice(5).trim();
+          }
+        }
+        
+        if (event.event) {
+          events.push(event);
+        }
+      }
+      
+      return { events, remaining };
+    }
+    
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
@@ -275,62 +303,44 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         break;
       }
       
-      const decoded = decoder.decode(value, { stream: true });
-      buffer += decoded;
+      buffer += decoder.decode(value, { stream: true });
       debugLog('=== New SSE data ===');
-      debugLog('Decoded length:', decoded.length);
-      debugLog('Full decoded data:', decoded);
+      debugLog('Full decoded data:', buffer);
       
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      const { events, remaining } = parseSSEEvents(buffer);
+      buffer = remaining;
+      
+      debugLog('Parsed', events.length, 'events, buffer remaining:', buffer.length);
       
       const chunks: string[] = [];
       let isDone = false;
       
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        if (line.startsWith('id:')) {
-          lastEventId = line.slice(3).trim();
-          continue;
-        }
+      for (const event of events) {
+        debugLog('Event:', event.event, 'id:', event.id);
         
         // 只处理 CHUNK_DELTA 事件
-        if (line === 'event: CHUNK_DELTA') {
-          const dataLine = lines[i + 1];
-          debugLog('CHUNK_DELTA event, dataLine:', dataLine);
-          
-          if (dataLine?.startsWith('data: ')) {
-            try {
-              const jsonStr = dataLine.slice(6);
-              const data = JSON.parse(jsonStr);
-              
-              if (data.text) {
-                chunks.push(data.text);
-                totalChunks++;
-                debugLog(`Chunk #${totalChunks}: "${data.text}"`);
-              }
-            } catch (e) {
-              debugLog('Failed to parse:', e);
+        if (event.event === 'CHUNK_DELTA' && event.data) {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.text) {
+              chunks.push(data.text);
+              totalChunks++;
+              debugLog(`Chunk #${totalChunks}: "${data.text}"`);
             }
+          } catch (e) {
+            debugLog('Failed to parse CHUNK_DELTA data:', e);
           }
           continue;
         }
         
-        // 忽略其他事件
-        if (line === 'event: STREAM_CHUNK' || 
-            line === 'event: SSE_ACK' ||
-            line === 'event: SSE_REPLY_END') {
-          if (line === 'event: SSE_REPLY_END') {
-            isDone = true;
-          }
-          continue;
+        if (event.event === 'SSE_REPLY_END') {
+          debugLog('Found SSE_REPLY_END');
+          isDone = true;
         }
       }
       
       if (chunks.length > 0) {
-        debugLog(`Sending ${chunks.length} chunks, IDs will be:`, chunks.map((_, idx) => `${request.request_id}_chunk_${idx}_${Date.now()}`));
+        debugLog(`Sending ${chunks.length} chunks`);
         window.postMessage({
           __openclaw: true,
           type: 'response',
