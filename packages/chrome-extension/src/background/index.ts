@@ -62,8 +62,16 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 });
 
 chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.MessageSender, sendResponse: (response?: any) => void) => {
-  const senderType = sender.id ? (sender.tab ? 'content' : 'offscreen') : 'popup';
-  console.log('[OpenClaw Background] Received message:', message.type, 'from:', senderType, 'tab:', sender.tab?.id);
+  const senderType = sender.id ? (sender.tab ? 'content' : 'offscreen/popup') : 'external';
+  const senderTabId = sender.tab?.id || 'no-tab';
+  console.log(`[BACKGROUND] 收到消息: type=${message.type}, from=${senderType}, tabId=${senderTabId}, chunk_id=${message.chunk_id || 'N/A'}`);
+  
+  // 如果是 delta/done/error 且来自 offscreen/popup，忽略（防止循环）
+  if (!sender.tab && (message.type === 'delta' || message.type === 'done' || message.type === 'error')) {
+    console.log(`[BACKGROUND] 忽略来自 offscreen/popup 的响应消息`);
+    sendResponse({ received: true });
+    return true;
+  }
   
   // 来自 Popup 的 get_status 请求，转发到 Offscreen
   if (message.type === 'get_status') {
