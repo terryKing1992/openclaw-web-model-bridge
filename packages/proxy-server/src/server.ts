@@ -289,26 +289,17 @@ app.post('/v1/chat/completions', async (req, res) => {
     let isCompleted = false;
     const startTime = Date.now();
     
-    // 监听请求事件
-    req.on('close', () => {
+    // 监听响应关闭事件（这才是客户端真正断开的标志）
+    res.on('close', () => {
       const elapsed = Date.now() - startTime;
       if (isCompleted) {
-        logger.info(`请求正常完成关闭: requestId=${requestId}, 耗时: ${elapsed}ms`);
+        logger.info(`响应正常完成关闭: requestId=${requestId}, 耗时: ${elapsed}ms`);
         return;
       }
-      logger.info(`请求异常关闭: requestId=${requestId}, 耗时: ${elapsed}ms`);
-      logger.info(`请求异常关闭可能原因: 客户端超时、网络中断或主动取消`);
+      logger.info(`客户端断开连接: requestId=${requestId}, 耗时: ${elapsed}ms`);
       wsClient?.send(JSON.stringify({ type: 'cancel', request_id: requestId }));
       pendingRequests.delete(requestId);
       clearInterval(checkDone);
-    });
-    
-    req.on('error', (err) => {
-      logger.error(`请求错误: requestId=${requestId}, error: ${err.message}`);
-    });
-    
-    res.on('close', () => {
-      logger.info(`响应连接关闭: requestId=${requestId}`);
     });
     
     res.on('error', (err: any) => {
