@@ -298,19 +298,42 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           }
         }
         
-        if (!eventType) continue;
+        if (!eventType || !eventData) continue;
         
-        // 只处理 CHUNK_DELTA 事件（增量文本）
-        if (eventType === 'CHUNK_DELTA' && eventData) {
+        // 处理 STREAM_MSG_NOTIFY (初始消息)
+        if (eventType === 'STREAM_MSG_NOTIFY') {
           try {
             const data = JSON.parse(eventData);
-            if (data.text) {
-              chunks.push(data.text);
+            const text = data?.content?.content_block?.[0]?.content?.text_block?.text;
+            if (text) {
+              chunks.push(text);
               totalChunks++;
-              debugLog(`Chunk #${totalChunks}: "${data.text}"`);
+              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY: "${text}"`);
             }
           } catch (e) {
-            debugLog('Failed to parse CHUNK_DELTA:', e);
+            debugLog('Failed to parse STREAM_MSG_NOTIFY:', e);
+          }
+          continue;
+        }
+        
+        // 处理 STREAM_CHUNK (增量 patch)
+        if (eventType === 'STREAM_CHUNK') {
+          try {
+            const data = JSON.parse(eventData);
+            const patchOps = data?.patch_op || [];
+            for (const op of patchOps) {
+              // patch_object=1 表示内容更新
+              if (op.patch_object === 1 && op.patch_type === 1) {
+                const text = op.patch_value?.content_block?.[0]?.content?.text_block?.text;
+                if (text) {
+                  chunks.push(text);
+                  totalChunks++;
+                  debugLog(`Chunk #${totalChunks} from STREAM_CHUNK: "${text}"`);
+                }
+              }
+            }
+          } catch (e) {
+            debugLog('Failed to parse STREAM_CHUNK:', e);
           }
           continue;
         }
@@ -322,7 +345,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 忽略所有其他事件（STREAM_MSG_NOTIFY, STREAM_CHUNK, SSE_HEARTBEAT, SSE_ACK 等）
+        // 忽略其他事件（CHUNK_DELTA, SSE_HEARTBEAT, SSE_ACK 等）
       }
       
       if (chunks.length > 0) {
