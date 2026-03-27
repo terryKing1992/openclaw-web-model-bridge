@@ -37,11 +37,13 @@ window.addEventListener('message', (event) => {
     }
     
     if (response.chunks && response.chunks.length > 0) {
-      console.log('[OpenClaw] 收到', response.chunks.length, '个chunks, request_id:', response.request_id);
+      const seq = response._seq || '?';
+      console.log(`[CONTENT] 收到 ${response.chunks.length} 个chunks, seq: ${seq}, request_id: ${response.request_id}`);
+      console.log(`[CONTENT] chunks内容: [${response.chunks.map((c: string) => `"${c.substring(0, 20)}"`).join(', ')}]`);
       for (let i = 0; i < response.chunks.length; i++) {
         const chunk = response.chunks[i];
-        const chunkId = `${response.request_id}_c${i}_${Date.now()}`;
-        console.log(`[OpenClaw] 发送delta #${i}:`, chunkId, `"${chunk.substring(0, 30)}"`);
+        const chunkId = `${response.request_id}_s${seq}_i${i}`;
+        console.log(`[CONTENT] 发送delta: ${chunkId}`);
         chrome.runtime.sendMessage({
           type: 'delta',
           request_id: response.request_id,

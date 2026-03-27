@@ -348,13 +348,15 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       }
       
       if (chunks.length > 0) {
-        debugLog(`Sending ${chunks.length} chunks`);
+        const chunkIds = chunks.map((c, i) => `${totalChunks - chunks.length + i + 1}`);
+        debugLog(`[INJECT] Sending ${chunks.length} chunks, IDs: [${chunkIds.join(', ')}], texts: [${chunks.map(c => `"${c.substring(0, 20)}"`).join(', ')}]`);
         window.postMessage({
           __openclaw: true,
           type: 'response',
           data: {
             request_id: request.request_id,
             chunks,
+            _seq: totalChunks, // 添加序号帮助追踪
           },
         }, '*');
       }
