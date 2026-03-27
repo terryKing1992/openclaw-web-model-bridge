@@ -197,7 +197,20 @@ app.post('/v1/chat/completions', async (req, res) => {
     messages = limitMessageLength(messages);
     let message = buildDoubaoMessage(messages);
     
-    logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, message长度=${message.length}`);
+    // 确保最终字符串长度不超过 32K
+    while (message.length > 32000 && messages.length > 1) {
+      logger.warn(`消息长度 ${message.length} 超过限制，删除最前面的消息`);
+      // 删除第一条非系统消息
+      const firstNonSystemIndex = messages.findIndex(m => m.role !== 'system');
+      if (firstNonSystemIndex >= 0) {
+        messages = messages.filter((_, i) => i !== firstNonSystemIndex);
+        message = buildDoubaoMessage(messages);
+      } else {
+        break;
+      }
+    }
+    
+    logger.info(`处理请求: requestId=${requestId}, model=${model}, conversationId=${pluginStatus.conversationId}, 最终message长度=${message.length}`);
     
     // 重试计数器
     let retryCount = 0;
