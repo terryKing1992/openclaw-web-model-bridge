@@ -95,19 +95,24 @@ const listener = (msg: any) => {
       if (msg.request_id !== requestId) return;
       
       const timestamp = Date.now();
-      console.log(`[Popup] ${timestamp} 收到消息: type=${msg.type}, chunk_id=${msg.chunk_id || 'N/A'}, text="${msg.text?.substring(0, 50) || ''}"`);
+      console.log(`[Popup] ${timestamp} 收到消息: type=${msg.type}, brief=${msg.brief ? 'yes' : 'no'}`);
       
-      if (msg.type === 'delta') {
-        fullText += msg.text;
-        console.log(`[Popup] 累积文本: "${fullText}"`);
-        output.textContent = `Request ID: ${requestId}\n\n响应内容:\n${fullText}\n\n原始数据:\n${JSON.stringify(msg, null, 2)}\n\n--- 持续接收中 ---`;
-      } else if (msg.type === 'done') {
+      if (msg.type === 'done') {
         isComplete = true;
+        // 优先使用 brief 字段（完整响应）
+        if (msg.brief) {
+          fullText = msg.brief;
+          console.log(`[Popup] 使用 brief: "${fullText}"`);
+        }
         status.textContent = '请求完成';
         status.className = 'debug-status success show';
         output.textContent = `Request ID: ${requestId}\n\n完整响应:\n${fullText}\n\n--- 完成 ---`;
         chrome.runtime.onMessage.removeListener(listener);
         sendBtn.disabled = false;
+      } else if (msg.type === 'delta') {
+        // 累积增量（作为备份，如果 brief 不存在）
+        fullText += msg.text;
+        output.textContent = `Request ID: ${requestId}\n\n响应内容:\n${fullText}\n\n原始数据:\n${JSON.stringify(msg, null, 2)}\n\n--- 持续接收中 ---`;
       } else if (msg.type === 'error') {
         isComplete = true;
         status.textContent = '请求失败: ' + msg.message;

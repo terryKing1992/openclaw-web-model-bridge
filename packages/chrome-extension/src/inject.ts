@@ -339,8 +339,22 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         
         // 处理流结束
         if (eventType === 'SSE_REPLY_END') {
-          debugLog('Found SSE_REPLY_END');
-          isDone = true;
+          try {
+            const data = JSON.parse(eventData);
+            // end_type=1 时有 brief 字段包含完整响应
+            if (data.end_type === 1 && data.msg_finish_attr?.brief) {
+              debugLog(`SSE_REPLY_END brief: "${data.msg_finish_attr.brief}"`);
+              isDone = true;
+              // 保存 brief 用于 done 消息
+              (window as any).__openclaw_brief = data.msg_finish_attr.brief;
+            } else if (data.end_type === 3) {
+              // 最终结束标志
+              isDone = true;
+            }
+          } catch (e) {
+            debugLog('Failed to parse SSE_REPLY_END:', e);
+            isDone = true;
+          }
           continue;
         }
         
@@ -367,15 +381,18 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       }
       
       if (isDone) {
-        debugLog('Stream complete, total chunks:', totalChunks);
+        const brief = (window as any).__openclaw_brief;
+        debugLog('Stream complete, total chunks:', totalChunks, 'brief:', brief ? 'yes' : 'no');
         window.postMessage({
           __openclaw: true,
           type: 'response',
           data: {
             request_id: request.request_id,
             done: true,
+            brief: brief || undefined,
           },
         }, '*');
+        delete (window as any).__openclaw_brief;
       }
     }
     
