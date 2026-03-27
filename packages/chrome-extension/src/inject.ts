@@ -265,12 +265,11 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     
     const decoder = new TextDecoder();
     let buffer = '';
-    let totalChunks = 0;
     
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        debugLog('Stream done, total chunks extracted:', totalChunks);
+        debugLog('Stream done');
         break;
       }
       
@@ -279,9 +278,6 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
       // SSE 事件以 \n\n 分隔
       const eventBlocks = buffer.split('\n\n');
       buffer = eventBlocks.pop() || '';
-      
-      const chunks: string[] = [];
-      let isDone = false;
       
       for (const eventBlock of eventBlocks) {
         if (!eventBlock.trim()) continue;
@@ -300,86 +296,40 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         
         if (!eventType || !eventData) continue;
         
-        // 处理 STREAM_MSG_NOTIFY (提取 tts_content)
-        if (eventType === 'STREAM_MSG_NOTIFY') {
-          try {
-            const data = JSON.parse(eventData);
-            const ttsContent = data?.content?.tts_content;
-            if (ttsContent) {
-              chunks.push(ttsContent);
-              totalChunks++;
-              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY tts_content: "${ttsContent}"`);
-            }
-          } catch (e) {
-            debugLog('Failed to parse STREAM_MSG_NOTIFY:', e);
-          }
-          continue;
-        }
-        
-        // 处理 STREAM_CHUNK (提取 tts_content from patch_object=111)
-        if (eventType === 'STREAM_CHUNK') {
-          try {
-            const data = JSON.parse(eventData);
-            const patchOps = data?.patch_op || [];
-            for (const op of patchOps) {
-              if (op.patch_object === 111 && op.patch_type === 1) {
-                const ttsContent = op.patch_value?.tts_content;
-                if (ttsContent) {
-                  chunks.push(ttsContent);
-                  totalChunks++;
-                  debugLog(`Chunk #${totalChunks} from STREAM_CHUNK tts_content: "${ttsContent}"`);
-                }
-              }
-            }
-          } catch (e) {
-            debugLog('Failed to parse STREAM_CHUNK:', e);
-          }
-          continue;
-        }
-        
-        // 处理流结束
+        // 只处理 SSE_REPLY_END (提取完整响应)
         if (eventType === 'SSE_REPLY_END') {
-          debugLog('Found SSE_REPLY_END');
-          isDone = true;
+          try {
+            const data = JSON.parse(eventData);
+            // end_type=1 时有 brief 字段包含完整响应
+            if (data.end_type === 1 && data.msg_finish_attr?.brief) {
+              const fullText = data.msg_finish_attr.brief;
+              debugLog(`[INJECT] Got complete response from SSE_REPLY_END: "${fullText}"`);
+              
+              // 发送完整响应
+              window.postMessage({
+                __openclaw: true,
+                type: 'response',
+                data: {
+                  request_id: request.request_id,
+                  chunks: [fullText],
+                  done: true,
+                },
+              }, '*');
+            } else if (data.end_type === 3) {
+              // end_type=3 是最终结束标志
+              debugLog('[INJECT] SSE_REPLY_END end_type=3, stream finished');
+            }
+          } catch (e) {
+            debugLog('Failed to parse SSE_REPLY_END:', e);
+          }
           continue;
         }
         
-        // 忽略 CHUNK_DELTA 和其他事件
-      }
-      
-      debugLog('=== SSE解析完成 ===');
-      debugLog(`本轮收到事件: ${eventBlocks.length} 个`);
-      debugLog(`本轮提取chunks: ${chunks.length} 个`);
-      debugLog(`累计总chunks: ${totalChunks} 个`);
-      
-      if (chunks.length > 0) {
-        const chunkSummary = chunks.map((c, i) => `[${i}]"${c}"`).join(' ');
-        debugLog(`[INJECT -> CONTENT] 发送 ${chunks.length} chunks: ${chunkSummary}`);
-        window.postMessage({
-          __openclaw: true,
-          type: 'response',
-          data: {
-            request_id: request.request_id,
-            chunks,
-            _seq: totalChunks,
-          },
-        }, '*');
-      }
-      
-      if (isDone) {
-        debugLog('Stream complete, total chunks:', totalChunks);
-        window.postMessage({
-          __openclaw: true,
-          type: 'response',
-          data: {
-            request_id: request.request_id,
-            done: true,
-          },
-        }, '*');
+        // 忽略其他所有事件
       }
     }
     
-    debugLog('Finished reading stream, total chunks sent:', totalChunks);
+    debugLog('Finished reading stream');
     
   } catch (error: any) {
     debugLog('Error during fetch:', error);
