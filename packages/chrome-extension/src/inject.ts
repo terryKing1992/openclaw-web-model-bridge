@@ -275,15 +275,14 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         break;
       }
       
-      buffer += decoder.decode(value, { stream: true });
-      debugLog('=== New SSE data received ===');
-      debugLog('Buffer length:', buffer.length);
-      debugLog('Buffer preview:', buffer.substring(0, 300));
+      const decoded = decoder.decode(value, { stream: true });
+      buffer += decoded;
+      debugLog('=== New SSE data ===');
+      debugLog('Decoded length:', decoded.length);
+      debugLog('Full decoded data:', decoded);
       
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-      
-      debugLog('Split into', lines.length, 'lines, buffer remaining:', buffer.length);
       
       const chunks: string[] = [];
       let isDone = false;
@@ -297,9 +296,10 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 只处理 CHUNK_DELTA 事件，忽略 STREAM_CHUNK 等其他事件
+        // 只处理 CHUNK_DELTA 事件
         if (line === 'event: CHUNK_DELTA') {
           const dataLine = lines[i + 1];
+          debugLog('CHUNK_DELTA event, dataLine:', dataLine);
           
           if (dataLine?.startsWith('data: ')) {
             try {
@@ -309,42 +309,28 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
               if (data.text) {
                 chunks.push(data.text);
                 totalChunks++;
-                debugLog(`Chunk #${totalChunks} from CHUNK_DELTA:`, data.text.substring(0, 50));
+                debugLog(`Chunk #${totalChunks}: "${data.text}"`);
               }
             } catch (e) {
-              debugLog('Failed to parse CHUNK_DELTA:', e, 'dataLine:', dataLine);
+              debugLog('Failed to parse:', e);
             }
           }
           continue;
         }
         
-        // 忽略 STREAM_CHUNK 事件（不提取文本）
-        if (line === 'event: STREAM_CHUNK') {
-          debugLog('Ignoring STREAM_CHUNK event');
-          continue;
-        }
-        
-        if (line === 'event: SSE_REPLY_END') {
-          debugLog('Found SSE_REPLY_END, stream will end');
-          isDone = true;
-          continue;
-        }
-        
-        if (line === 'event: SSE_ACK') {
-          continue;
-        }
-        
-        // 记录其他未知事件
-        if (line.startsWith('event:')) {
-          debugLog('Ignoring event:', line);
+        // 忽略其他事件
+        if (line === 'event: STREAM_CHUNK' || 
+            line === 'event: SSE_ACK' ||
+            line === 'event: SSE_REPLY_END') {
+          if (line === 'event: SSE_REPLY_END') {
+            isDone = true;
+          }
           continue;
         }
       }
       
-      debugLog(`This batch: ${chunks.length} chunks, total so far: ${totalChunks}`);
-      
       if (chunks.length > 0) {
-        debugLog(`Sending ${chunks.length} chunks to content script`);
+        debugLog(`Sending ${chunks.length} chunks, IDs will be:`, chunks.map((_, idx) => `${request.request_id}_chunk_${idx}_${Date.now()}`));
         window.postMessage({
           __openclaw: true,
           type: 'response',
