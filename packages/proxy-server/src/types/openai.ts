@@ -1,6 +1,21 @@
+export interface OpenAITextContent {
+  type: 'text';
+  text: string;
+}
+
+export interface OpenAIImageContent {
+  type: 'image_url';
+  image_url: {
+    url: string;
+    detail?: 'auto' | 'low' | 'high';
+  };
+}
+
+export type OpenAIMessageContent = string | (OpenAITextContent | OpenAIImageContent)[];
+
 export interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: OpenAIMessageContent;
 }
 
 export interface OpenAIChatRequest {

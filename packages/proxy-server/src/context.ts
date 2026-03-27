@@ -1,6 +1,38 @@
-import { OpenAIMessage } from './types/openai.js';
+import { OpenAIMessage, OpenAIMessageContent } from './types/openai.js';
 
 const MAX_MESSAGE_LENGTH = 32000; // 32K 字符限制
+
+// 将 content 转换为自然语言字符串
+function contentToString(content: OpenAIMessageContent): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  
+  // 处理数组形式的 content（多模态消息）
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const item of content) {
+      if (item.type === 'text') {
+        parts.push(item.text);
+      } else if (item.type === 'image_url') {
+        // 图片描述
+        const url = item.image_url?.url || '';
+        if (url.startsWith('data:')) {
+          parts.push('[图片: Base64编码]');
+        } else {
+          parts.push(`[图片: ${url.substring(0, 50)}...]`);
+        }
+      } else {
+        // 其他类型
+        parts.push(JSON.stringify(item));
+      }
+    }
+    return parts.join('\n');
+  }
+  
+  // 其他情况，序列化为 JSON
+  return JSON.stringify(content);
+}
 
 export function truncateMessages(messages: OpenAIMessage[], maxRounds: number = 5): OpenAIMessage[] {
   const totalRounds = Math.floor(messages.length / 2);
@@ -18,7 +50,8 @@ export function buildDoubaoMessage(messages: OpenAIMessage[]): string {
   
   for (const msg of messages) {
     const role = msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '助手' : '系统';
-    lines.push(`${role}: ${msg.content}`);
+    const content = contentToString(msg.content);
+    lines.push(`${role}: ${content}`);
   }
   
   return lines.join('\n');
@@ -37,7 +70,7 @@ function calculateFinalLength(messages: OpenAIMessage[]): number {
     const role = msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '助手' : '系统';
     // 角色前缀: "用户: " = 4 字符，换行符: 1 字符
     const prefixLength = role.length + 2; // ": " = 2 字符
-    const contentLength = msg.content?.length || 0;
+    const contentLength = contentToString(msg.content).length;
     length += prefixLength + contentLength + 1; // +1 for \n
   }
   return length;
@@ -65,7 +98,7 @@ export function limitMessageLength(messages: OpenAIMessage[], maxLength: number 
   
   for (const msg of reversed) {
     const role = msg.role === 'user' ? '用户' : msg.role === 'assistant' ? '助手' : '系统';
-    const msgLength = role.length + 2 + (msg.content?.length || 0) + 1;
+    const msgLength = role.length + 2 + contentToString(msg.content).length + 1;
     
     if (currentLength + msgLength > maxLength) {
       break;
