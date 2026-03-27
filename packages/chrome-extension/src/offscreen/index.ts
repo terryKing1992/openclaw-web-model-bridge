@@ -130,15 +130,23 @@ function handleMessage(msg: any) {
   // 来自代理服务器的chat/cancel消息，转发到background，再转发到content script
   if (msg.type === 'chat') {
     console.log('[OpenClaw Offscreen] Forwarding chat to content script via background:', msg);
-    chrome.runtime.sendMessage(msg).catch((e) => {
-      console.error('[OpenClaw Offscreen] Failed to forward chat:', e);
+    chrome.runtime.sendMessage(msg, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('[OpenClaw Offscreen] Failed to forward chat:', chrome.runtime.lastError);
+      } else {
+        console.log('[OpenClaw Offscreen] Chat forwarded successfully, response:', response);
+      }
     });
   }
   
   if (msg.type === 'cancel') {
     console.log('[OpenClaw Offscreen] Forwarding cancel to content script via background:', msg);
-    chrome.runtime.sendMessage(msg).catch((e) => {
-      console.error('[OpenClaw Offscreen] Failed to forward cancel:', e);
+    chrome.runtime.sendMessage(msg, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('[OpenClaw Offscreen] Failed to forward cancel:', chrome.runtime.lastError);
+      } else {
+        console.log('[OpenClaw Offscreen] Cancel forwarded successfully, response:', response);
+      }
     });
   }
 }

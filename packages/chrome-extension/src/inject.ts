@@ -23,6 +23,7 @@ interface DoubaoParams {
   tea_uuid: string;
   fp: string;
   pc_version: string;
+  user_id: string;
 }
 
 const abortControllers = new Map<string, AbortController>();
@@ -47,10 +48,11 @@ function getDoubaoParams(): DoubaoParams {
   const tea_uuid = getCookie('tea_uuid') || getLocalStorage('tea_uuid') || web_id;
   const fp = getCookie('fp') || getLocalStorage('fp') || '';
   const pc_version = getCookie('pc_version') || getLocalStorage('pc_version') || '3.11.3';
+  const user_id = getCookie('user_id') || getLocalStorage('user_id') || getLocalStorage('uid') || '';
   
-  debugLog('Doubao params:', { aid, device_id, web_id, tea_uuid, fp: fp ? '[set]' : '[empty]', pc_version });
+  debugLog('Doubao params:', { aid, device_id, web_id, tea_uuid, fp: fp ? '[set]' : '[empty]', pc_version, user_id: user_id ? '[set]' : '[empty]' });
   
-  return { aid, device_id, web_id, tea_uuid, fp, pc_version };
+  return { aid, device_id, web_id, tea_uuid, fp, pc_version, user_id };
 }
 
 function generateLocalId(): string {
@@ -207,9 +209,13 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
     });
     
     debugLog('Response received:', response.status, response.statusText);
+    debugLog('Response content-type:', response.headers.get('content-type'));
     
     if (!response.ok) {
       debugLog('Response not OK:', response.status);
+      const errorText = await response.text();
+      debugLog('Error response body:', errorText);
+      
       if (response.status === 403) {
         window.postMessage({
           __openclaw: true,
@@ -229,9 +235,6 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         await sleep(delay);
         return sendDoubaoChatWithRetry(request, retryCount + 1);
       }
-      
-      const errorText = await response.text();
-      debugLog('Error response body:', errorText);
       
       window.postMessage({
         __openclaw: true,
