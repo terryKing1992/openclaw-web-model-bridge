@@ -300,15 +300,15 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
         
         if (!eventType || !eventData) continue;
         
-        // 处理 STREAM_MSG_NOTIFY (初始消息)
+        // 处理 STREAM_MSG_NOTIFY (提取 tts_content)
         if (eventType === 'STREAM_MSG_NOTIFY') {
           try {
             const data = JSON.parse(eventData);
-            const text = data?.content?.content_block?.[0]?.content?.text_block?.text;
-            if (text) {
-              chunks.push(text);
+            const ttsContent = data?.content?.tts_content;
+            if (ttsContent) {
+              chunks.push(ttsContent);
               totalChunks++;
-              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY: "${text}"`);
+              debugLog(`Chunk #${totalChunks} from STREAM_MSG_NOTIFY tts_content: "${ttsContent}"`);
             }
           } catch (e) {
             debugLog('Failed to parse STREAM_MSG_NOTIFY:', e);
@@ -316,13 +316,12 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 处理 STREAM_CHUNK (tts_content)
+        // 处理 STREAM_CHUNK (提取 tts_content from patch_object=111)
         if (eventType === 'STREAM_CHUNK') {
           try {
             const data = JSON.parse(eventData);
             const patchOps = data?.patch_op || [];
             for (const op of patchOps) {
-              // patch_object=111 表示 tts_content 更新
               if (op.patch_object === 111 && op.patch_type === 1) {
                 const ttsContent = op.patch_value?.tts_content;
                 if (ttsContent) {
@@ -345,7 +344,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        // 忽略其他事件
+        // 忽略 CHUNK_DELTA 和其他事件
       }
       
       if (chunks.length > 0) {
