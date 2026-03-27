@@ -297,7 +297,8 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        if (line.startsWith('event: CHUNK_DELTA')) {
+        // 只处理 CHUNK_DELTA 事件，忽略 STREAM_CHUNK 等其他事件
+        if (line === 'event: CHUNK_DELTA') {
           const dataLine = lines[i + 1];
           
           if (dataLine?.startsWith('data: ')) {
@@ -308,7 +309,7 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
               if (data.text) {
                 chunks.push(data.text);
                 totalChunks++;
-                debugLog(`Chunk #${totalChunks}:`, data.text.substring(0, 50));
+                debugLog(`Chunk #${totalChunks} from CHUNK_DELTA:`, data.text.substring(0, 50));
               }
             } catch (e) {
               debugLog('Failed to parse CHUNK_DELTA:', e, 'dataLine:', dataLine);
@@ -317,18 +318,25 @@ async function sendDoubaoChatWithRetry(request: ChatRequest, retryCount: number 
           continue;
         }
         
-        if (line.startsWith('event: SSE_REPLY_END')) {
+        // 忽略 STREAM_CHUNK 事件（不提取文本）
+        if (line === 'event: STREAM_CHUNK') {
+          debugLog('Ignoring STREAM_CHUNK event');
+          continue;
+        }
+        
+        if (line === 'event: SSE_REPLY_END') {
           debugLog('Found SSE_REPLY_END, stream will end');
           isDone = true;
           continue;
         }
         
-        if (line.startsWith('event: SSE_ACK')) {
+        if (line === 'event: SSE_ACK') {
           continue;
         }
         
+        // 记录其他未知事件
         if (line.startsWith('event:')) {
-          debugLog('Unknown event:', line);
+          debugLog('Ignoring event:', line);
           continue;
         }
       }
