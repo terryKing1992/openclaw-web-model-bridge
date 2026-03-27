@@ -14,6 +14,7 @@ export interface WSMessage {
   need_deep_think?: number;
   bot_id?: string;
   pageOpened?: boolean;
+  chunk_id?: string;
 }
 
 export interface PluginStatus {

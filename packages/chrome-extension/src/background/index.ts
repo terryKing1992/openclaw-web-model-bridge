@@ -87,7 +87,7 @@ chrome.runtime.onMessage.addListener((message: any, sender: chrome.runtime.Messa
       message.type === 'page_closed') {
     if (sender.tab) {
       // 来自 content script，转发到 offscreen
-      console.log('[OpenClaw Background] 转发消息到offscreen:', message.type);
+      console.log('[OpenClaw Background] 转发消息到offscreen:', message.type, message.chunk_id || '');
       chrome.runtime.sendMessage(message).catch((e) => {
         console.error('[OpenClaw Background] Failed to forward to offscreen:', e);
       });

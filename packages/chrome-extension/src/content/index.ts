@@ -38,11 +38,14 @@ window.addEventListener('message', (event) => {
     
     if (response.chunks && response.chunks.length > 0) {
       console.log('[OpenClaw] 转发chunks:', response.chunks.length, '个');
-      for (const chunk of response.chunks) {
-        console.log('[OpenClaw] 转发chunk:', chunk);
+      for (let i = 0; i < response.chunks.length; i++) {
+        const chunk = response.chunks[i];
+        const chunkId = `${response.request_id}_chunk_${i}_${Date.now()}`;
+        console.log('[OpenClaw] 转发chunk:', chunkId, chunk.substring(0, 30));
         chrome.runtime.sendMessage({
           type: 'delta',
           request_id: response.request_id,
+          chunk_id: chunkId,
           text: chunk,
         });
       }

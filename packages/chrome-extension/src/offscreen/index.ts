@@ -173,7 +173,7 @@ chrome.runtime.onMessage.addListener((message: any, sender, sendResponse) => {
   } else if (message.type === 'delta' || message.type === 'done' || message.type === 'error') {
     // 来自background转发的消息，转发到proxy
     if (ws?.readyState === WebSocket.OPEN) {
-      console.log('[OpenClaw Offscreen] Forwarding to proxy:', message.type, message);
+      console.log('[OpenClaw Offscreen] Forwarding to proxy:', message.type, message.chunk_id || '', message.text?.substring(0, 30) || '');
       ws.send(JSON.stringify(message));
     } else {
       console.error('[OpenClaw Offscreen] WebSocket not open, cannot forward');

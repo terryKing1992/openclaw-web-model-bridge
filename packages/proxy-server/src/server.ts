@@ -35,6 +35,7 @@ const pendingRequests = new Map<string, {
   reject: (error: Error) => void;
   chunks: string[];
   controller: AbortController;
+  sentChunks?: Set<string>;
 }>();
 
 let wsClient: WebSocket | null = null;
@@ -84,12 +85,20 @@ function handleMessage(msg: WSMessage) {
     pluginStatus.conversationId = msg.conversationId ?? msg.conversation_id ?? null;
     logger.info(`状态更新: pageOpened=${pluginStatus.pageOpened}, loggedIn=${pluginStatus.loggedIn}, conversationId=${pluginStatus.conversationId}`);
   } else if (msg.type === 'delta' && msg.request_id && msg.text) {
-    logger.info(`收到delta: request_id=${msg.request_id}, text长度=${msg.text.length}, text=${msg.text.substring(0, 50)}...`);
+    logger.info(`收到delta: request_id=${msg.request_id}, chunk_id=${msg.chunk_id || 'N/A'}, text长度=${msg.text.length}, text=${msg.text.substring(0, 30)}...`);
     const pending = pendingRequests.get(msg.request_id);
     if (pending) {
-      pending.chunks.push(msg.text);
-      if (pending.resolve) {
-        pending.resolve(msg.text);
+      // 检测重复 chunk
+      if (msg.chunk_id && pending.sentChunks?.has(msg.chunk_id)) {
+        logger.warn(`检测到重复chunk: ${msg.chunk_id}, 跳过`);
+      } else {
+        if (!pending.sentChunks) pending.sentChunks = new Set();
+        if (msg.chunk_id) pending.sentChunks.add(msg.chunk_id);
+        
+        pending.chunks.push(msg.text);
+        if (pending.resolve) {
+          pending.resolve(msg.text);
+        }
       }
     }
   } else if (msg.type === 'done' && msg.request_id) {
