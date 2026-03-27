@@ -196,7 +196,16 @@ app.post('/v1/chat/completions', async (req, res) => {
     };
     
     logger.info(`发送WebSocket消息: ${JSON.stringify(wsMessage)}`);
-    wsClient?.send(JSON.stringify(wsMessage));
+    if (!wsClient) {
+      logger.error('WebSocket客户端未连接');
+      throw new Error('WebSocket客户端未连接');
+    }
+    if (wsClient.readyState !== WebSocket.OPEN) {
+      logger.error(`WebSocket客户端状态异常: readyState=${wsClient.readyState}`);
+      throw new Error('WebSocket客户端未就绪');
+    }
+    wsClient.send(JSON.stringify(wsMessage));
+    logger.info('WebSocket消息发送成功');
     
     const pending = {
       chunks: [] as string[],

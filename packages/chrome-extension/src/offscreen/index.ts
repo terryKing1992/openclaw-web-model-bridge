@@ -36,12 +36,15 @@ function connect() {
   };
   
   ws.onmessage = (event) => {
+    console.log('[OpenClaw Offscreen] Raw message received:', event.data);
     try {
       const msg = JSON.parse(event.data);
-      console.log('[OpenClaw Offscreen] Received from proxy:', msg.type, msg);
+      console.log('[OpenClaw Offscreen] Parsed message:', msg);
+      console.log('[OpenClaw Offscreen] Message type:', msg.type);
       handleMessage(msg);
     } catch (e) {
       console.error('[OpenClaw Offscreen] Failed to parse message:', e);
+      console.error('[OpenClaw Offscreen] Raw data:', event.data);
     }
   };
   
