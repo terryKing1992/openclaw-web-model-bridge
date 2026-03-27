@@ -186,6 +186,13 @@ app.post('/v1/chat/completions', async (req, res) => {
       choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
     }));
     
+    // 立即刷新响应，确保客户端收到数据
+    const resAny = res as any;
+    if (typeof resAny.flush === 'function') {
+      resAny.flush();
+      logger.info('响应已刷新');
+    }
+    
     const wsMessage: WSMessage = {
       type: 'chat',
       request_id: requestId,
@@ -219,10 +226,17 @@ app.post('/v1/chat/completions', async (req, res) => {
             model,
             choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
           }));
+          // 每次写入后立即刷新
+          const resAny = res as any;
+          if (typeof resAny.flush === 'function') {
+            resAny.flush();
+          }
         }
       },
       reject: (error: Error) => {
         logger.error(`reject called: ${error.message}`);
+        isCompleted = true;
+        clearInterval(checkDone);
         res.write(formatSSE({
           id: `chatcmpl-${requestId}`,
           object: 'chat.completion.chunk',
@@ -239,14 +253,22 @@ app.post('/v1/chat/completions', async (req, res) => {
     
     pendingRequests.set(requestId, pending);
     
+    let isCompleted = false;
+    
     req.on('close', () => {
-      logger.info(`请求关闭: requestId=${requestId}`);
+      if (isCompleted) {
+        logger.info(`请求正常完成关闭: requestId=${requestId}`);
+        return;
+      }
+      logger.info(`请求异常关闭，发送cancel: requestId=${requestId}`);
       wsClient?.send(JSON.stringify({ type: 'cancel', request_id: requestId }));
       pendingRequests.delete(requestId);
+      clearInterval(checkDone);
     });
     
     const checkDone = setInterval(() => {
       if (!pendingRequests.has(requestId)) {
+        isCompleted = true;
         logger.info(`请求完成: requestId=${requestId}`);
         clearInterval(checkDone);
         res.write(formatSSE({

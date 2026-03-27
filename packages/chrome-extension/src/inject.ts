@@ -402,12 +402,21 @@ async function sendDoubaoChat(request: ChatRequest): Promise<void> {
 };
 
 window.addEventListener('message', (event) => {
-  if (event.source !== window) return;
+  debugLog('Received window message:', event.data);
+  debugLog('Event source:', event.source === window ? 'same window' : 'different window');
+  
+  if (event.source !== window) {
+    debugLog('Ignoring message from different source');
+    return;
+  }
   
   const msg = event.data;
-  if (!msg.__openclaw) return;
+  if (!msg.__openclaw) {
+    debugLog('Ignoring message without __openclaw flag');
+    return;
+  }
   
-  debugLog('Received message from content script:', msg.type);
+  debugLog('Processing message from content script:', msg.type);
   
   if (msg.type === 'chat_request') {
     debugLog('Starting chat request:', msg.data);

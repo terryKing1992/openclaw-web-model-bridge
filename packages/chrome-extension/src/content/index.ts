@@ -118,6 +118,17 @@ chrome.runtime.onMessage.addListener((message: any, _sender: chrome.runtime.Mess
 
 function sendChatMessage(msg: any) {
   console.log('[OpenClaw] 发送chat消息到inject, conversation_id:', msg.conversation_id);
+  console.log('[OpenClaw] window.postMessage data:', {
+    __openclaw: true,
+    type: 'chat_request',
+    data: {
+      request_id: msg.request_id,
+      conversation_id: msg.conversation_id,
+      bot_id: msg.bot_id,
+      need_deep_think: msg.need_deep_think,
+      message: msg.message,
+    },
+  });
   window.postMessage({
     __openclaw: true,
     type: 'chat_request',
@@ -129,6 +140,7 @@ function sendChatMessage(msg: any) {
       message: msg.message,
     },
   }, '*');
+  console.log('[OpenClaw] postMessage sent');
 }
 
 function cancelRequest(requestId: string) {
